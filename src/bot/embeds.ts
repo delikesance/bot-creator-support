@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { SETUP_EN } from "../i18n";
+import { SETUP_EN, pack } from "../i18n";
 
 /** Images des embeds : résolues depuis ce fichier (jamais depuis le dossier courant). */
 export const ASSETS_DIR = resolve(import.meta.dir, "..", "..", "assets", "embed");
@@ -37,5 +37,13 @@ export function styledMessage(text: string, style: Style) {
       thumbnail: { url: "attachment://bibi.png" },
     },
     files: ["bibi.png" as const],
+  };
+}
+
+/** Demande de note postée à la fermeture : texte localisé et cinq boutons dont l'identifiant porte le ticket et la note. */
+export function ratingMessage(ticketId: number, locale?: string) {
+  return {
+    embed: { color: COLOR_BRAND, description: pack(locale).ratingPrompt },
+    buttons: [1, 2, 3, 4, 5].map((n) => ({ customId: `rate:${ticketId}:${n}`, label: String(n) })),
   };
 }

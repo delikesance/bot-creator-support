@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { assetPath, setupEmbed, styledMessage } from "../src/bot/embeds";
-import { welcomeText } from "../src/i18n";
+import { assetPath, ratingMessage, setupEmbed, styledMessage } from "../src/bot/embeds";
+import { pack, welcomeText } from "../src/i18n";
 
 describe("embed /setup", () => {
   const e = setupEmbed();
@@ -39,5 +39,21 @@ describe("messages stylés", () => {
     expect(m.content).toBeUndefined();
     expect(m.embed.color).toBe(0x5c5b58);
     expect(m.embed.description).toBe("🔴 Ton ticket est fermé.");
+  });
+});
+
+describe("demande de note", () => {
+  const langs = ["en", "fr", "es", "de", "pt", "it", "nl", "pl", "ru", "tr", "ja", "ko", "zh"];
+  test("chaque langue a le texte de demande, de remerciement et de doublon", () => {
+    for (const l of langs) {
+      const p = pack(l);
+      for (const k of ["ratingPrompt", "ratingThanks", "ratingDone"] as const) expect(p[k].length).toBeGreaterThan(5);
+    }
+    expect(new Set(langs.map((l) => pack(l).ratingPrompt)).size).toBe(langs.length);
+  });
+  test("cinq boutons dont l'identifiant porte le ticket, texte dans la langue du ticket", () => {
+    const m = ratingMessage(12, "fr");
+    expect(m.buttons.map((b) => b.customId)).toEqual(["rate:12:1", "rate:12:2", "rate:12:3", "rate:12:4", "rate:12:5"]);
+    expect(m.embed.description).toBe(pack("fr").ratingPrompt);
   });
 });

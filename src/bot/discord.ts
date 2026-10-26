@@ -22,7 +22,7 @@ import type { Gateway, OutFile, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
 import { pack } from "../i18n";
 import { registerCommands } from "./register";
-import { assetPath, setupEmbed, styledMessage, type Style } from "./embeds";
+import { assetPath, ratingMessage, setupEmbed, styledMessage, type Style } from "./embeds";
 import { SETUP_EN } from "../i18n";
 
 const button = (id: string, label: string, style: ButtonStyle) =>
@@ -130,6 +130,21 @@ export class DiscordGateway implements Gateway {
       components,
       // Seul le message d'accueil peut notifier l'auteur ; les réponses du panel ne ping personne.
       allowedMentions: opts?.controls === "active" || opts?.style === "welcome" ? { parse: ["users"] } : { parse: [] },
+    });
+  }
+
+  /** Cinq boutons de 1 à 5 dans le salon du ticket, dans la langue du client. */
+  async askRating(channelId: string, ticketId: number, locale?: string): Promise<void> {
+    const ch = await this.channel(channelId);
+    const m = ratingMessage(ticketId, locale);
+    await ch.send({
+      embeds: [m.embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          m.buttons.map((b) => button(b.customId, b.label, ButtonStyle.Secondary)),
+        ),
+      ],
+      allowedMentions: { parse: [] },
     });
   }
 

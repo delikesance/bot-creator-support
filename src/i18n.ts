@@ -31,6 +31,15 @@ export interface Pack {
   cmdTicket: string;
   cmdClose: string;
   cmdSetup: string;
+  /** Fermeture avec demande de note : invite, remerciement, déjà noté ; message accompagnant la transcription. */
+  ratePrompt: string;
+  rateThanks: string;
+  rateDone: string;
+  transcriptText: string;
+  /** Demande de note postée à la fermeture (boutons de 1 à 5), remerciement et refus d'une seconde note. */
+  ratingPrompt: string;
+  ratingThanks: string;
+  ratingDone: string;
 }
 
 const PACKS: Record<string, Pack> = {
@@ -58,6 +67,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Open a support ticket",
     cmdClose: "Close this channel's ticket",
     cmdSetup: "Post the “Open a ticket” panel in this channel",
+    ratingPrompt: "How was the support you received? Pick a rating from 1 (poor) to 5 (excellent).",
+    ratingThanks: "Thank you for your feedback!",
+    ratingDone: "You have already rated this ticket.",
+    ratePrompt: "How was the support you received? Rate it from 1 to 5.",
+    rateThanks: "Thank you for your feedback!",
+    rateDone: "This ticket has already been rated.",
+    transcriptText: "Here is the transcript of your ticket.",
   },
   fr: {
     welcome: "Ton ticket #{id} a bien été reçu : un membre de l'équipe va bientôt le prendre en charge.",
@@ -84,6 +100,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Ouvrir un ticket de support",
     cmdClose: "Fermer le ticket de ce salon",
     cmdSetup: "Poster le panneau « Ouvrir un ticket » dans ce salon",
+    ratingPrompt: "Comment s'est passé ton échange avec le support ? Choisis une note de 1 (mauvais) à 5 (excellent).",
+    ratingThanks: "Merci pour ton retour !",
+    ratingDone: "Tu as déjà noté ce ticket.",
+    ratePrompt: "Comment s'est passé le support ? Note-le de 1 à 5.",
+    rateThanks: "Merci pour ton retour !",
+    rateDone: "Ce ticket a déjà été noté.",
+    transcriptText: "Voici la transcription de ton ticket.",
   },
   es: {
     welcome: "Tu ticket #{id} ha sido recibido: un miembro del equipo lo atenderá en breve.",
@@ -110,6 +133,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Abrir un ticket de soporte",
     cmdClose: "Cerrar el ticket de este canal",
     cmdSetup: "Publicar el panel «Abrir un ticket» en este canal",
+    ratingPrompt: "¿Qué tal fue la atención recibida? Elige una nota de 1 (mala) a 5 (excelente).",
+    ratingThanks: "¡Gracias por tu opinión!",
+    ratingDone: "Ya has valorado este ticket.",
+    ratePrompt: "¿Qué te pareció la atención recibida? Valórala de 1 a 5.",
+    rateThanks: "¡Gracias por tu opinión!",
+    rateDone: "Este ticket ya ha sido valorado.",
+    transcriptText: "Aquí tienes la transcripción de tu ticket.",
   },
   de: {
     welcome: "Dein Ticket #{id} ist eingegangen: Ein Teammitglied kümmert sich in Kürze darum.",
@@ -136,6 +166,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Ein Support-Ticket öffnen",
     cmdClose: "Das Ticket dieses Kanals schließen",
     cmdSetup: "Das Panel „Ticket öffnen“ in diesem Kanal posten",
+    ratingPrompt: "Wie war der Support? Wähle eine Bewertung von 1 (schlecht) bis 5 (ausgezeichnet).",
+    ratingThanks: "Danke für dein Feedback!",
+    ratingDone: "Du hast dieses Ticket bereits bewertet.",
+    ratePrompt: "Wie war der Support? Bewerte ihn von 1 bis 5.",
+    rateThanks: "Danke für dein Feedback!",
+    rateDone: "Dieses Ticket wurde bereits bewertet.",
+    transcriptText: "Hier ist das Transkript deines Tickets.",
   },
   pt: {
     welcome: "Seu ticket #{id} foi recebido: um membro da equipe vai atendê-lo em breve.",
@@ -162,6 +199,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Abrir um ticket de suporte",
     cmdClose: "Fechar o ticket deste canal",
     cmdSetup: "Publicar o painel “Abrir um ticket” neste canal",
+    ratingPrompt: "Como foi o atendimento? Escolha uma nota de 1 (ruim) a 5 (excelente).",
+    ratingThanks: "Obrigado pelo seu feedback!",
+    ratingDone: "Você já avaliou este ticket.",
+    ratePrompt: "Como foi o suporte que você recebeu? Avalie de 1 a 5.",
+    rateThanks: "Obrigado pelo seu feedback!",
+    rateDone: "Este ticket já foi avaliado.",
+    transcriptText: "Aqui está a transcrição do seu ticket.",
   },
   it: {
     welcome: "Il tuo ticket #{id} è stato ricevuto: un membro del team se ne occuperà a breve.",
@@ -188,6 +232,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Apri un ticket di supporto",
     cmdClose: "Chiudi il ticket di questo canale",
     cmdSetup: "Pubblica il pannello «Apri un ticket» in questo canale",
+    ratingPrompt: "Com'è andata con il supporto? Scegli un voto da 1 (scarso) a 5 (eccellente).",
+    ratingThanks: "Grazie per il tuo feedback!",
+    ratingDone: "Hai già valutato questo ticket.",
+    ratePrompt: "Com'è stata l'assistenza ricevuta? Valutala da 1 a 5.",
+    rateThanks: "Grazie per il tuo feedback!",
+    rateDone: "Questo ticket è già stato valutato.",
+    transcriptText: "Ecco la trascrizione del tuo ticket.",
   },
   nl: {
     welcome: "Je ticket #{id} is ontvangen: een teamlid pakt het binnenkort op.",
@@ -214,6 +265,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Een supportticket openen",
     cmdClose: "Het ticket van dit kanaal sluiten",
     cmdSetup: "Het paneel “Ticket openen” in dit kanaal plaatsen",
+    ratingPrompt: "Hoe was de ondersteuning? Kies een cijfer van 1 (slecht) tot 5 (uitstekend).",
+    ratingThanks: "Bedankt voor je feedback!",
+    ratingDone: "Je hebt dit ticket al beoordeeld.",
+    ratePrompt: "Hoe was de ondersteuning? Beoordeel van 1 tot 5.",
+    rateThanks: "Bedankt voor je feedback!",
+    rateDone: "Dit ticket is al beoordeeld.",
+    transcriptText: "Hier is het transcript van je ticket.",
   },
   pl: {
     welcome: "Twoje zgłoszenie #{id} zostało odebrane: członek zespołu zajmie się nim wkrótce.",
@@ -240,6 +298,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Otwórz zgłoszenie do wsparcia",
     cmdClose: "Zamknij zgłoszenie na tym kanale",
     cmdSetup: "Opublikuj panel „Otwórz zgłoszenie” na tym kanale",
+    ratingPrompt: "Jak oceniasz pomoc? Wybierz ocenę od 1 (słabo) do 5 (doskonale).",
+    ratingThanks: "Dziękujemy za opinię!",
+    ratingDone: "Ten ticket został już oceniony.",
+    ratePrompt: "Jak oceniasz otrzymane wsparcie? Oceń od 1 do 5.",
+    rateThanks: "Dziękujemy za opinię!",
+    rateDone: "To zgłoszenie zostało już ocenione.",
+    transcriptText: "Oto transkrypcja Twojego zgłoszenia.",
   },
   ru: {
     welcome: "Ваше обращение #{id} получено: скоро им займётся сотрудник команды.",
@@ -266,6 +331,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Открыть обращение в поддержку",
     cmdClose: "Закрыть обращение в этом канале",
     cmdSetup: "Опубликовать панель «Открыть обращение» в этом канале",
+    ratingPrompt: "Как вам поддержка? Выберите оценку от 1 (плохо) до 5 (отлично).",
+    ratingThanks: "Спасибо за отзыв!",
+    ratingDone: "Вы уже оценили это обращение.",
+    ratePrompt: "Как вам поддержка? Оцените от 1 до 5.",
+    rateThanks: "Спасибо за отзыв!",
+    rateDone: "Это обращение уже оценено.",
+    transcriptText: "Вот расшифровка вашего обращения.",
   },
   tr: {
     welcome: "#{id} numaralı talebin alındı: ekibimizden biri kısa süre içinde ilgilenecek.",
@@ -292,6 +364,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "Bir destek talebi aç",
     cmdClose: "Bu kanaldaki talebi kapat",
     cmdSetup: "“Talep aç” panelini bu kanala gönder",
+    ratingPrompt: "Destek nasıldı? 1 (kötü) ile 5 (mükemmel) arasında bir puan seç.",
+    ratingThanks: "Geri bildirimin için teşekkürler!",
+    ratingDone: "Bu bileti zaten puanladın.",
+    ratePrompt: "Aldığın destek nasıldı? 1 ile 5 arasında puan ver.",
+    rateThanks: "Geri bildirimin için teşekkürler!",
+    rateDone: "Bu bilet zaten puanlandı.",
+    transcriptText: "Biletinin dökümü burada.",
   },
   ja: {
     welcome: "チケット #{id} を受け付けました。まもなく担当者が対応します。",
@@ -317,6 +396,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "サポートチケットを作成する",
     cmdClose: "このチャンネルのチケットを閉じる",
     cmdSetup: "「チケットを作成」パネルをこのチャンネルに投稿する",
+    ratingPrompt: "サポートはいかがでしたか？1（悪い）から5（とても良い）で評価してください。",
+    ratingThanks: "ご意見ありがとうございます！",
+    ratingDone: "このチケットはすでに評価済みです。",
+    ratePrompt: "サポートはいかがでしたか？1〜5で評価してください。",
+    rateThanks: "ご意見ありがとうございます！",
+    rateDone: "このチケットはすでに評価済みです。",
+    transcriptText: "チケットの記録はこちらです。",
   },
   ko: {
     welcome: "티켓 #{id}이(가) 접수되었습니다. 곧 팀원이 담당할 예정입니다.",
@@ -342,6 +428,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "지원 티켓 열기",
     cmdClose: "이 채널의 티켓 닫기",
     cmdSetup: "이 채널에 '티켓 열기' 패널 게시하기",
+    ratingPrompt: "지원은 어떠셨나요? 1(나쁨)에서 5(매우 좋음) 중에서 선택해 주세요.",
+    ratingThanks: "의견 감사합니다!",
+    ratingDone: "이미 이 티켓을 평가하셨습니다.",
+    ratePrompt: "받은 지원은 어땠나요? 1~5점으로 평가해 주세요.",
+    rateThanks: "의견 주셔서 감사합니다!",
+    rateDone: "이 티켓은 이미 평가되었습니다.",
+    transcriptText: "티켓 대화 기록입니다.",
   },
   zh: {
     welcome: "你的工单 #{id} 已收到，团队成员很快会接手处理。",
@@ -367,6 +460,13 @@ const PACKS: Record<string, Pack> = {
     cmdTicket: "创建支持工单",
     cmdClose: "关闭此频道的工单",
     cmdSetup: "在此频道发布“创建工单”面板",
+    ratingPrompt: "本次支持体验如何？请在 1（差）到 5（非常好）之间打分。",
+    ratingThanks: "感谢你的反馈！",
+    ratingDone: "你已经评价过这个工单了。",
+    ratePrompt: "您对获得的支持满意吗？请评分，1 到 5 分。",
+    rateThanks: "感谢您的反馈！",
+    rateDone: "此工单已评价过。",
+    transcriptText: "这是您的工单记录。",
   },
 };
 
