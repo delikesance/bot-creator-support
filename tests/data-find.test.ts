@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
 import { openDb } from "../src/db";
 import { TicketService, TicketError } from "../src/tickets";
 
+let db: Database;
 let svc: TicketService;
 const mk = (n: number, extra: Record<string, string> = {}) =>
   svc.create({ guildId: "g1", userId: `u${n}`, userName: `user${n}`, channelId: `c${n}`, subject: `Sujet ${n}`, ...extra });
@@ -9,15 +11,25 @@ const cust = (n: number) => ({ authorId: `u${n}`, authorName: `user${n}`, source
 const staff = { authorId: "a1", authorName: "admin", source: "panel" as const };
 
 beforeEach(() => {
-  svc = new TicketService(openDb(":memory:"));
+  db = openDb(":memory:");
+  svc = new TicketService(db);
 });
 
 describe("find", () => {
-  test("sans filtre, renvoie tout, le plus récemment actif d'abord", () => {
+  test("no filter: returns everything, most recently active first", () => {
     const a = mk(1);
     const b = mk(2);
-    svc.addMessage(a.id, { ...cust(1), content: "bonjour" });
+    // Dates posées à la main : le test ne dépend pas de l'horloge.
+    db.run("UPDATE tickets SET updated_at = 2000 WHERE id = ?", [a.id]);
+    db.run("UPDATE tickets SET updated_at = 1000 WHERE id = ?", [b.id]);
     expect(svc.find({}).map((t) => t.id)).toEqual([a.id, b.id]);
+  });
+
+  test("same updated_at: the higher id comes first", () => {
+    const a = mk(1);
+    const b = mk(2);
+    db.run("UPDATE tickets SET updated_at = 1000");
+    expect(svc.find({}).map((t) => t.id)).toEqual([b.id, a.id]);
   });
 
   test("filtre par serveur, statut et awaiting", () => {
