@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, Routes, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionFlagsBits, Routes, SlashCommandBuilder } from "discord.js";
 import { commandLocalizations, pack } from "../i18n";
 
 export const commandDefinitions = [
@@ -8,7 +8,14 @@ export const commandDefinitions = [
     .setName("setup")
     .setDescription(pack("en").cmdSetup)
     .setDescriptionLocalizations(commandLocalizations("cmdSetup"))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addChannelOption((o) =>
+      o
+        .setName("category")
+        .setDescription("Category where new ticket channels are created (kept if omitted)")
+        .addChannelTypes(ChannelType.GuildCategory)
+        .setRequired(false),
+    ),
 ].map((c) => c.toJSON());
 
 interface RestLike {

@@ -24,6 +24,8 @@ export interface Pack {
   descLabel: string;
   descPh: string;
   panelPosted: string;
+  /** Ajouté à la confirmation de /setup quand une catégorie est choisie ; `{name}` : nom de la catégorie. */
+  categorySet: string;
   /** Descriptions des commandes slash. */
   cmdTicket: string;
   cmdClose: string;
@@ -56,6 +58,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Detailed description",
     descPh: "What happened? What were you trying to do? Error messages, steps to reproduce…",
     panelPosted: "✅ Panel posted.",
+    categorySet: "Tickets will be created in the “{name}” category.",
     cmdTicket: "Open a support ticket",
     cmdClose: "Close this channel's ticket",
     cmdSetup: "Post the “Open a ticket” panel in this channel",
@@ -84,6 +87,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Description détaillée",
     descPh: "Que s'est-il passé ? Que voulais-tu faire ? Messages d'erreur, étapes pour reproduire…",
     panelPosted: "✅ Panneau posté.",
+    categorySet: "Les tickets seront créés dans la catégorie « {name} ».",
     cmdTicket: "Ouvrir un ticket de support",
     cmdClose: "Fermer le ticket de ce salon",
     cmdSetup: "Poster le panneau « Ouvrir un ticket » dans ce salon",
@@ -112,6 +116,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Descripción detallada",
     descPh: "¿Qué pasó? ¿Qué querías hacer? Mensajes de error, pasos para reproducirlo…",
     panelPosted: "✅ Panel publicado.",
+    categorySet: "Los tickets se crearán en la categoría «{name}».",
     cmdTicket: "Abrir un ticket de soporte",
     cmdClose: "Cerrar el ticket de este canal",
     cmdSetup: "Publicar el panel «Abrir un ticket» en este canal",
@@ -140,6 +145,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Ausführliche Beschreibung",
     descPh: "Was ist passiert? Was wolltest du tun? Fehlermeldungen, Schritte zur Reproduktion…",
     panelPosted: "✅ Panel gepostet.",
+    categorySet: "Tickets werden in der Kategorie „{name}“ erstellt.",
     cmdTicket: "Ein Support-Ticket öffnen",
     cmdClose: "Das Ticket dieses Kanals schließen",
     cmdSetup: "Das Panel „Ticket öffnen“ in diesem Kanal posten",
@@ -168,6 +174,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Descrição detalhada",
     descPh: "O que aconteceu? O que você queria fazer? Mensagens de erro, passos para reproduzir…",
     panelPosted: "✅ Painel publicado.",
+    categorySet: "Os tickets serão criados na categoria “{name}”.",
     cmdTicket: "Abrir um ticket de suporte",
     cmdClose: "Fechar o ticket deste canal",
     cmdSetup: "Publicar o painel “Abrir um ticket” neste canal",
@@ -196,6 +203,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Descrizione dettagliata",
     descPh: "Cos'è successo? Cosa volevi fare? Messaggi di errore, passaggi per riprodurlo…",
     panelPosted: "✅ Pannello pubblicato.",
+    categorySet: "I ticket verranno creati nella categoria «{name}».",
     cmdTicket: "Apri un ticket di supporto",
     cmdClose: "Chiudi il ticket di questo canale",
     cmdSetup: "Pubblica il pannello «Apri un ticket» in questo canale",
@@ -224,6 +232,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Uitgebreide beschrijving",
     descPh: "Wat is er gebeurd? Wat wilde je doen? Foutmeldingen, stappen om het te reproduceren…",
     panelPosted: "✅ Paneel geplaatst.",
+    categorySet: "Tickets worden aangemaakt in de categorie “{name}”.",
     cmdTicket: "Een supportticket openen",
     cmdClose: "Het ticket van dit kanaal sluiten",
     cmdSetup: "Het paneel “Ticket openen” in dit kanaal plaatsen",
@@ -252,6 +261,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Szczegółowy opis",
     descPh: "Co się stało? Co chciałeś zrobić? Komunikaty o błędach, kroki do odtworzenia…",
     panelPosted: "✅ Panel opublikowany.",
+    categorySet: "Zgłoszenia będą tworzone w kategorii „{name}”.",
     cmdTicket: "Otwórz zgłoszenie do wsparcia",
     cmdClose: "Zamknij zgłoszenie na tym kanale",
     cmdSetup: "Opublikuj panel „Otwórz zgłoszenie” na tym kanale",
@@ -280,6 +290,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Подробное описание",
     descPh: "Что произошло? Что вы хотели сделать? Сообщения об ошибках, шаги для воспроизведения…",
     panelPosted: "✅ Панель опубликована.",
+    categorySet: "Обращения будут создаваться в категории «{name}».",
     cmdTicket: "Открыть обращение в поддержку",
     cmdClose: "Закрыть обращение в этом канале",
     cmdSetup: "Опубликовать панель «Открыть обращение» в этом канале",
@@ -308,6 +319,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "Ayrıntılı açıklama",
     descPh: "Ne oldu? Ne yapmak istiyordun? Hata mesajları, sorunu yeniden üretme adımları…",
     panelPosted: "✅ Panel gönderildi.",
+    categorySet: "Talepler “{name}” kategorisinde oluşturulacak.",
     cmdTicket: "Bir destek talebi aç",
     cmdClose: "Bu kanaldaki talebi kapat",
     cmdSetup: "“Talep aç” panelini bu kanala gönder",
@@ -335,6 +347,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "詳細な説明",
     descPh: "何が起きましたか？ 何をしようとしていましたか？ エラーメッセージや再現手順など",
     panelPosted: "✅ パネルを投稿しました。",
+    categorySet: "チケットは「{name}」カテゴリに作成されます。",
     cmdTicket: "サポートチケットを作成する",
     cmdClose: "このチャンネルのチケットを閉じる",
     cmdSetup: "「チケットを作成」パネルをこのチャンネルに投稿する",
@@ -362,6 +375,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "상세 설명",
     descPh: "무슨 일이 있었나요? 무엇을 하려고 했나요? 오류 메시지, 재현 방법 등",
     panelPosted: "✅ 패널을 게시했습니다.",
+    categorySet: "티켓은 '{name}' 카테고리에 생성됩니다.",
     cmdTicket: "지원 티켓 열기",
     cmdClose: "이 채널의 티켓 닫기",
     cmdSetup: "이 채널에 '티켓 열기' 패널 게시하기",
@@ -389,6 +403,7 @@ const PACKS: Record<string, Pack> = {
     descLabel: "详细描述",
     descPh: "发生了什么？你想做什么？错误信息、复现步骤等",
     panelPosted: "✅ 面板已发布。",
+    categorySet: "工单将创建在“{name}”分类下。",
     cmdTicket: "创建支持工单",
     cmdClose: "关闭此频道的工单",
     cmdSetup: "在此频道发布“创建工单”面板",

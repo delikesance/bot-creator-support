@@ -523,6 +523,19 @@ export class TicketService {
     return r !== null;
   }
 
+  /** Catégorie Discord où ranger les salons de ticket de ce serveur (null : aucune, ou TICKET_CATEGORY_ID côté bot). */
+  categoryId(guildId: string): string | null {
+    const r = this.db.query<{ category_id: string | null }, [string]>("SELECT category_id FROM guild_settings WHERE guild_id = ?").get(guildId);
+    return r?.category_id ?? null;
+  }
+
+  setCategory(guildId: string, categoryId: string | null, actor = "system"): void {
+    this.db
+      .query("INSERT INTO guild_settings (guild_id,category_id) VALUES (?,?) ON CONFLICT(guild_id) DO UPDATE SET category_id = excluded.category_id")
+      .run(guildId, categoryId);
+    this.log(null, actor, "category_set", `${guildId}:${categoryId ?? ""}`);
+  }
+
   metrics(guildId: string, days: number): Metrics {
     return computeMetrics(this.db, guildId, days);
   }
