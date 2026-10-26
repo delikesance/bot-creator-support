@@ -59,6 +59,10 @@ Bun.serve({
       if (t) desk.recordDiscordMessage(t.channelId, { id: t.userId, name: t.userName }, u.searchParams.get("text") ?? "…");
       return new Response("ok");
     }
+    if (u.pathname === "/demo/pic.png") {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200"><rect width="360" height="200" fill="#2a1f4d"/><text x="180" y="108" font-size="28" fill="#fff" text-anchor="middle" font-family="sans-serif">Capture d'écran</text></svg>`;
+      return new Response(svg, { headers: { "content-type": "image/svg+xml" } });
+    }
     return handle(req);
   },
 });
