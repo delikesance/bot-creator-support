@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Le .env local est en développement ; décommente pour passer en production :
+      # NODE_ENV: production
+      DB_PATH: /data/tickets.db
+    ports:
+      - "3000:3000"
+    volumes:
+      - tickets-data:/data
+volumes:
+  tickets-data:

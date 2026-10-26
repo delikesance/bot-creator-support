@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — Panel admin</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e6e8ee; --muted:#8b93a5;
+    --open:#3ba55d; --prog:#f0b232; --closed:#ed4245; --accent:#5865f2;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f5f7; --panel:#fff; --line:#dfe2e8; --text:#1c1f26; --muted:#667085; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  button,input,textarea { font:inherit; color:inherit; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { font-size:18px; margin:0; }
+  main { max-width:1200px; margin:0 auto; padding:20px 24px; }
+  .btn { border:1px solid var(--line); background:var(--panel); padding:7px 14px; border-radius:8px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.danger { color:var(--closed); }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-left:5px solid var(--c); border-radius:10px; padding:14px 16px; cursor:pointer; text-align:left; }
+  .stat.active { outline:2px solid var(--c); }
+  .stat b { display:block; font-size:28px; }
+  .stat span { color:var(--muted); }
+  .layout { display:grid; grid-template-columns:minmax(300px,1fr) 1.4fr; gap:16px; align-items:start; }
+  @media (max-width:850px) { .layout { grid-template-columns:1fr; } .stats { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  .row { display:flex; gap:10px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .row:last-child { border-bottom:0; }
+  .row:hover, .row.sel { background:color-mix(in srgb, var(--accent) 10%, transparent); }
+  .dot { width:11px; height:11px; border-radius:50%; background:var(--c); flex:none; }
+  .row .t { flex:1; min-width:0; }
+  .row .t div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row small, .muted { color:var(--muted); }
+  .badge { font-size:12px; padding:2px 9px; border-radius:99px; background:color-mix(in srgb, var(--c) 20%, transparent); color:var(--c); font-weight:600; white-space:nowrap; }
+  .empty { padding:30px; text-align:center; color:var(--muted); }
+  .detail-h { padding:14px 16px; border-bottom:1px solid var(--line); }
+  .detail-h h2 { margin:0 0 6px; font-size:17px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .msgs { max-height:46vh; overflow:auto; padding:12px 16px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:85%; }
+  .msg .who { font-size:12px; color:var(--muted); }
+  .msg .body { background:var(--bg); border:1px solid var(--line); padding:8px 12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
+  .msg.panel { align-self:flex-end; } .msg.panel .body { background:color-mix(in srgb, var(--accent) 22%, transparent); }
+  .msg.system { align-self:center; } .msg.system .body { background:none; border:0; color:var(--muted); font-size:13px; text-align:center; }
+  form.reply { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); }
+  form.reply textarea { flex:1; resize:vertical; min-height:42px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .login { max-width:340px; margin:14vh auto; padding:26px; }
+  .login input { width:100%; padding:9px 11px; margin:12px 0; background:var(--bg); border:1px solid var(--line); border-radius:8px; }
+  .err { color:var(--closed); min-height:1.3em; }
+  .toast { position:fixed; bottom:18px; right:18px; background:var(--closed); color:#fff; padding:10px 16px; border-radius:8px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const LABEL = { open:"Ouvert", in_progress:"En cours", closed:"Fermé" };
+const COLOR = { open:"var(--open)", in_progress:"var(--prog)", closed:"var(--closed)" };
+const state = { filter:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null };
+const app = document.getElementById("app");
+
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "style") el.style.cssText = v;
+    else el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid);
+  return el;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch("/api" + path, { headers:{ "content-type":"application/json" }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { renderLogin(); throw new Error("auth"); }
+  if (!res.ok) throw new Error(data.error || "Erreur " + res.status);
+  return data;
+}
+const post = (path, body) => api(path, { method:"POST", body: body ? JSON.stringify(body) : undefined });
+
+function toast(msg) {
+  const t = h("div", { class:"toast" }, msg);
+  document.body.append(t);
+  setTimeout(() => t.remove(), 4000);
+}
+const ago = (ts) => new Date(ts).toLocaleString("fr-FR", { dateStyle:"short", timeStyle:"short" });
+
+function renderLogin(error = "") {
+  state.tickets = [];
+  const input = h("input", { type:"password", placeholder:"Mot de passe", autofocus:"" });
+  const err = h("div", { class:"err" }, error);
+  const form = h("form", { class:"card login", onsubmit: async (e) => {
+    e.preventDefault();
+    try { await post("/login", { password: input.value }); await load(); renderMain(); }
+    catch (x) { err.textContent = x.message === "auth" ? "Mot de passe incorrect." : x.message; }
+  }}, h("h1", { style:"margin:0;font-size:20px" }, "🎫 Panel support"), input, err, h("button", { class:"btn primary", style:"width:100%" }, "Se connecter"));
+  app.replaceChildren(form);
+}
+
+async function load() {
+  const q = state.filter ? "?status=" + state.filter : "";
+  const data = await api("/tickets" + q);
+  state.tickets = data.tickets; state.stats = data.stats;
+  if (state.selected) {
+    try { state.detail = await api("/tickets/" + state.selected); }
+    catch { state.selected = null; state.detail = null; }
+  }
+}
+
+function renderMain() {
+  const stat = (key, label) => h("button", { class:"stat" + (state.filter === key ? " active" : ""), style:`--c:${COLOR[key]}`,
+    onclick: async () => { state.filter = state.filter === key ? "" : key; await refresh(); } },
+    h("b", {}, String(state.stats[key])), h("span", {}, label));
+
+  const list = state.tickets.length
+    ? state.tickets.map((t) => h("div", { class:"row" + (t.id === state.selected ? " sel" : ""), style:`--c:${COLOR[t.status]}`,
+        onclick: async () => { state.selected = t.id; await refresh(); } },
+        h("span", { class:"dot" }),
+        h("div", { class:"t" }, h("div", {}, `#${t.id} · ${t.subject}`), h("small", {}, `${t.userName} · ${ago(t.createdAt)}${t.assignee ? " · 👤 " + t.assignee : ""}`)),
+        h("span", { class:"badge" }, LABEL[t.status])))
+    : [h("div", { class:"empty" }, "Aucun ticket.")];
+
+  app.replaceChildren(
+    h("header", {}, h("h1", {}, "🎫 Panel support"), h("button", { class:"btn", onclick: async () => { await post("/logout"); renderLogin(); } }, "Déconnexion")),
+    h("main", {},
+      h("div", { class:"stats" }, stat("open", "Ouverts"), stat("in_progress", "En cours"), stat("closed", "Fermés")),
+      h("div", { class:"layout" }, h("div", { class:"card" }, list), renderDetail())));
+}
+
+function renderDetail() {
+  const d = state.detail;
+  if (!d) return h("div", { class:"card empty" }, "Sélectionne un ticket pour le gérer.");
+  const t = d.ticket;
+  const act = (label, path, cls = "") => h("button", { class:"btn " + cls, onclick: async () => {
+    if (path === "delete" && !confirm("Supprimer définitivement le salon Discord ?")) return;
+    try { await post(`/tickets/${t.id}/${path}`); await refresh(); } catch (e) { if (e.message !== "auth") toast(e.message); }
+  }}, label);
+
+  const buttons = [];
+  if (t.status === "open") buttons.push(act("Prendre en charge", "claim", "primary"));
+  if (t.status === "in_progress") buttons.push(act("Remettre en attente", "release"));
+  if (t.status !== "closed") buttons.push(act("Fermer", "close", "danger"));
+  if (t.status === "closed") buttons.push(act("Rouvrir", "reopen", "primary"), act("Supprimer le salon", "delete", "danger"));
+
+  const msgs = h("div", { class:"msgs" }, d.messages.map((m) => h("div", { class:"msg " + m.source },
+    m.source === "system" ? null : h("div", { class:"who" }, `${m.authorName} · ${ago(m.createdAt)}`),
+    h("div", { class:"body" }, m.content.replaceAll("**", "")))));
+  queueMicrotask(() => { msgs.scrollTop = msgs.scrollHeight; });
+
+  const ta = h("textarea", { placeholder: t.status === "closed" ? "Ticket fermé" : "Répondre (envoyé par le bot dans le salon Discord)…", ...(t.status === "closed" ? { disabled:"" } : {}) });
+  const form = h("form", { class:"reply", onsubmit: async (e) => {
+    e.preventDefault();
+    if (!ta.value.trim()) return;
+    try { await post(`/tickets/${t.id}/reply`, { content: ta.value }); ta.value = ""; await refresh(); } catch (x) { if (x.message !== "auth") toast(x.message); }
+  }}, ta, h("button", { class:"btn primary", ...(t.status === "closed" ? { disabled:"" } : {}) }, "Envoyer"));
+
+  return h("div", { class:"card" },
+    h("div", { class:"detail-h", style:`--c:${COLOR[t.status]}` },
+      h("h2", {}, `#${t.id} · ${t.subject}`),
+      h("span", { class:"badge" }, LABEL[t.status]), " ",
+      h("span", { class:"muted" }, `${t.userName} · ouvert le ${ago(t.createdAt)}${t.assignee ? " · pris par " + t.assignee : ""}`),
+      h("div", { class:"actions" }, buttons)),
+    msgs, form);
+}
+
+async function refresh() {
+  const typing = document.activeElement?.tagName === "TEXTAREA" && document.activeElement.value;
+  await load();
+  if (!typing) renderMain(); // ne pas écraser une réponse en cours de frappe
+}
+
+(async () => {
+  try { await load(); renderMain(); } catch { renderLogin(); }
+  setInterval(() => { if (state.tickets.length || document.querySelector(".stats")) refresh().catch(() => {}); }, 5000);
+})();
+</script>
+</body>
+</html>
