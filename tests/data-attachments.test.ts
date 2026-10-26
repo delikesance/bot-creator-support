@@ -208,3 +208,26 @@ describe("champs du ticket", () => {
     expect(svc.get(t.id)!.waitingSince).toBeNull();
   });
 });
+
+describe("codes d'erreur", () => {
+  const code = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return (e as TicketError).code;
+    }
+  };
+  test("chaque refus porte un code exploitable sans lire le texte", () => {
+    const t = svc.create(base);
+    expect(code(() => svc.close(999))).toBe("not_found");
+    expect(code(() => svc.setPriority(t.id, "x" as never))).toBe("invalid");
+    expect(code(() => svc.reopen(t.id))).toBe("not_closed");
+    expect(code(() => svc.setRating(t.id, 3))).toBe("not_closed");
+    svc.close(t.id);
+    expect(code(() => svc.close(t.id))).toBe("closed");
+    expect(code(() => svc.claim(t.id, { id: "a", name: "a" }))).toBe("closed");
+    svc.setRating(t.id, 3);
+    expect(code(() => svc.setRating(t.id, 4))).toBe("conflict");
+    expect(code(() => svc.create({ ...base, channelId: "c2" }, { maxActivePerUser: 0 }))).toBe("quota");
+  });
+});
