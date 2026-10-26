@@ -14,8 +14,8 @@ describe("downloadFile", () => {
   test("taille annoncée ou réelle au-delà du plafond : lève", async () => {
     await expect(
       downloadFile("https://cdn/a", { maxBytes: 5, fetch: fakeFetch(() => new Response("x", { headers: { "content-length": "99" } })) }),
-    ).rejects.toThrow(/volumineux/);
-    await expect(downloadFile("https://cdn/a", { maxBytes: 5, fetch: fakeFetch(() => new Response("123456789")) })).rejects.toThrow(/volumineux/);
+    ).rejects.toThrow(/too large/);
+    await expect(downloadFile("https://cdn/a", { maxBytes: 5, fetch: fakeFetch(() => new Response("123456789")) })).rejects.toThrow(/too large/);
   });
   test("délai dépassé : lève", async () => {
     const slow = ((_u: string, init: RequestInit) =>
