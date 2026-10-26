@@ -728,7 +728,7 @@ function renderTicket() {
       h("div", { class: "ttl" },
         h("div", { class: "line" }, h("span", { class: "eyebrow" }, `Ticket #${t.id}`), h("span", { class: "badge", style: `border-color:${s.color}55` }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label), wait),
         h("h1", {}, t.subject)),
-      h("div", { class: "acts" }, assigneeControl(t, "lg"), priorityControl(t, "lg"), h("button", { class: "btn ghost details-btn", type: "button", onclick: () => openSheet(d) }, "Details"), buttons)),
+      h("div", { class: "acts" }, assigneeControl(t, "lg"), priorityControl(t, "lg"), h("button", { class: "btn ghost details-btn", type: "button", onclick: () => openSheet(d) }, "Details"), h("a", { class: "btn ghost", href: `/api/tickets/${t.id}/transcript`, download: `ticket-${t.id}.txt`, title: "Download the public messages as a text file" }, icon("download", 16), "Transcript"), buttons)),
     h("div", { class: "cols" }, h("section", { class: "convo", "aria-label": "Conversation" }, msgs, c.el, c.overlay), renderAside(d)));
 }
 
@@ -909,6 +909,7 @@ document.addEventListener("keydown", (e) => {
   const typingNow = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "") || document.activeElement?.isContentEditable;
   if (!typingNow && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector(".scrim:not(.out)") && shell) {
     if (e.key === "?") { e.preventDefault(); showShortcuts(); return; }
+    if (state.detail && e.key === "c" && isOpen(state.detail.ticket)) { e.preventDefault(); closeFlow(state.detail.ticket); return; }
     if (state.detail && (e.key === "r" || e.key === "n")) { e.preventDefault(); composers.get(state.selected)?.focus(e.key === "n" ? "note" : "reply"); return; }
     if (!state.detail && (e.key === "j" || e.key === "k")) {
       const rows = [...document.querySelectorAll("a.row")];
@@ -924,7 +925,7 @@ document.addEventListener("keydown", (e) => {
 
 const SHORTCUTS = [
   ["/", "Search tickets"], ["?", "Show this list"], ["j / k", "Next or previous ticket in the list"], ["Enter", "Open the focused ticket"],
-  ["r", "Reply to the customer"], ["n", "Write an internal note"], ["Ctrl + Enter", "Send the reply or note"], ["/ in a reply", "Insert a saved reply"], ["Esc", "Leave the reply box, then go back to the inbox"],
+  ["r", "Reply to the customer"], ["n", "Write an internal note"], ["c", "Close the ticket"], ["Ctrl + Enter", "Send the reply or note"], ["/ in a reply", "Insert a saved reply"], ["Esc", "Leave the reply box, then go back to the inbox"],
 ];
 function showShortcuts() {
   return modal((done) => h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": "Keyboard shortcuts" },
