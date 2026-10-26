@@ -66,6 +66,24 @@ describe("ouverture", () => {
   });
 });
 
+describe("réponses du panel", () => {
+  test("pseudo et avatar transmis au gateway pour le webhook", async () => {
+    const sentOpts: unknown[] = [];
+    const d = new SupportDesk(new TicketService(openDb(":memory:")), {
+      createTicketChannel: async () => "c1",
+      send: async (_c, _t, o) => void sentOpts.push(o),
+      setUserLocked: async () => {},
+      deleteChannel: async () => {},
+    });
+    const t = await d.open({ ...user, subject: "a" });
+    sentOpts.length = 0;
+    await d.reply(t.id, "Salut", "Angelo", "https://cdn.test/a.png");
+    expect(sentOpts).toEqual([{ as: { name: "Angelo", avatarUrl: "https://cdn.test/a.png" } }]);
+    await d.reply(t.id, "Re", "Support");
+    expect(sentOpts.at(-1)).toEqual({ as: { name: "Support", avatarUrl: undefined } });
+  });
+});
+
 describe("cycle de vie", () => {
   test("claim -> in_progress et notifie", async () => {
     const t = await desk.open({ ...user, subject: "a" });

@@ -3,7 +3,11 @@ import { TicketError, TicketService, type Ticket } from "./tickets";
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
   createTicketChannel(o: { guildId: string; userId: string; userName: string }): Promise<string>;
-  send(channelId: string, text: string, opts?: { controls?: "active" | "closed" }): Promise<void>;
+  send(
+    channelId: string,
+    text: string,
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string } },
+  ): Promise<void>;
   setUserLocked(channelId: string, userId: string, locked: boolean): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
 }
@@ -88,14 +92,14 @@ export class SupportDesk {
   }
 
   /** Réponse envoyée depuis le panel : postée par le bot dans le salon. */
-  async reply(id: number, content: string, authorName: string): Promise<void> {
+  async reply(id: number, content: string, authorName: string, avatarUrl?: string): Promise<void> {
     const t = this.tickets.get(id);
     if (!t) throw new TicketError(`Ticket #${id} introuvable.`);
     if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
     const text = content.trim();
     if (!text) throw new TicketError("Le message est vide.");
-    // Côté Discord, c'est simplement le bot support qui écrit : pas de nom d'admin.
-    await this.gw.send(t.channelId, text);
+    // Côté Discord, le message apparaît sous le pseudo et l'avatar de l'admin (webhook du salon).
+    await this.gw.send(t.channelId, text, { as: { name: authorName, avatarUrl } });
     this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel" });
   }
 

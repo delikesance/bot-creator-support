@@ -388,7 +388,7 @@ function renderDetail() {
 
   const closed = t.status === "closed";
   const ta = h("textarea", { id:"reply", rows:"1", disabled:closed, "aria-label":"Réponse",
-    placeholder: closed ? "Ticket fermé. Rouvre-le pour répondre." : "Répondre. Le bot poste dans le salon Discord.",
+    placeholder: closed ? "Ticket fermé. Rouvre-le pour répondre." : `Répondre. Le message est posté sous ${state.me?.name ?? "ton nom"} dans le salon Discord.`,
     onkeydown:(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit(); } });
   ta.value = state.drafts?.[t.id] ?? "";
   ta.addEventListener("input", () => { (state.drafts ??= {})[t.id] = ta.value; });
@@ -424,7 +424,7 @@ function renderMain() {
   const typing = document.activeElement?.id === "reply" ? document.activeElement : null;
   const sel = typing?.selectionStart;
   app.replaceChildren(
-    h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), guildPicker(), h("div", { class:"spacer" }), live, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
+    h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), guildPicker(), h("div", { class:"spacer" }), live, state.me?.avatarUrl ? h("img", { class:"gicon", src:state.me.avatarUrl, alt:"", referrerpolicy:"no-referrer" }) : null, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
     h("main", {},
       h("div", { class:"head" + (state.animate ? " rise" : "") }, h("div", {}, h("div", { class:"eyebrow", style:"color:var(--accent-ink)" }, "Tickets"), h("h1", { class:"display" }, "Tous les tickets")), search),
       h("div", { class:"kpis" }, kpi("open", 1), kpi("in_progress", 2), kpi("closed", 3)),

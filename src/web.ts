@@ -18,6 +18,7 @@ interface Session {
   exp: number;
   id: string;
   name: string;
+  avatarUrl?: string;
   /** Accès à tous les serveurs où le bot est présent (super-admin ou mot de passe). */
   all: boolean;
   /** Sinon : serveurs où l'utilisateur a « Gérer le serveur » ou « Administrateur ». */
@@ -73,7 +74,7 @@ export function createHandler(
 ) {
   const accessible = (s: Session) => directory.list().filter((g) => s.all || s.guilds.includes(g.id));
   const sign = (v: string) => createHmac("sha256", cfg.sessionSecret).update(v).digest("base64url");
-  const makeToken = (who: { id: string; name: string; all: boolean; guilds: string[] }) => {
+  const makeToken = (who: { id: string; name: string; avatarUrl?: string; all: boolean; guilds: string[] }) => {
     const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_TTL_MS, ...who })).toString("base64url");
     return `${payload}.${sign(payload)}`;
   };
@@ -147,7 +148,7 @@ export function createHandler(
       }
       const headers = new Headers({ location: "/" });
       headers.append("set-cookie", clear);
-      headers.append("set-cookie", cookie("session", makeToken({ id: user.id, name: user.username, all, guilds: all ? [] : guilds }), SESSION_TTL_MS / 1000));
+      headers.append("set-cookie", cookie("session", makeToken({ id: user.id, name: user.username, avatarUrl: user.avatarUrl, all, guilds: all ? [] : guilds }), SESSION_TTL_MS / 1000));
       return new Response(null, { status: 302, headers });
     }
 
@@ -185,7 +186,7 @@ export function createHandler(
     if (path === "/api/logout" && req.method === "POST") {
       return json({ ok: true }, 200, { "set-cookie": cookie("session", "", 0) });
     }
-    if (path === "/api/me") return json({ id: session.id, name: session.name });
+    if (path === "/api/me") return json({ id: session.id, name: session.name, avatarUrl: session.avatarUrl });
 
     if (path === "/api/guilds") {
       return json({
@@ -271,7 +272,7 @@ export function createHandler(
               return json({ ok: true });
             case "reply": {
               const body = (await req.json().catch(() => ({}))) as { content?: string };
-              await desk.reply(id, String(body.content ?? ""), by);
+              await desk.reply(id, String(body.content ?? ""), by, session.avatarUrl);
               return json({ ok: true });
             }
           }
