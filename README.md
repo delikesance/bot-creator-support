@@ -8,30 +8,39 @@ Un bot Discord qui transforme chaque demande en **ticket privé**, et un **panel
 
 ## Comment ça marche
 
-1. Un membre tape `/ticket` ou clique sur le bouton du panneau posté par `/setup`. Une fenêtre lui demande un **titre** et une **description détaillée**.
-2. Le bot crée un salon privé (visible par l'utilisateur, le bot et le rôle support) et y poste un court message d'accueil.
-3. Le support répond depuis le **panel**. Le message apparaît dans le salon sous le pseudo et l'avatar Discord de la personne qui répond (webhook). Répondre directement dans le salon marche aussi : tout est historisé dans le panel.
-4. Le ticket se ferme depuis le panel (ou par `/close`) ; l'utilisateur ne peut plus écrire. Il peut être rouvert, et son salon supprimé une fois fermé.
+1. Un membre tape `/ticket` ou clique sur le bouton du message posté par `/setup` (toujours en anglais, avec une bannière). Une fenêtre lui demande un **titre** et une **description détaillée**.
+2. Le bot crée un salon privé (visible par l'utilisateur, le bot et le rôle support) et y poste un message d'accueil sous forme d'embed, qui mentionne l'utilisateur.
+3. Le support répond depuis le **panel**, avec des fichiers si besoin. Le message apparaît dans le salon sous le pseudo et l'avatar Discord de la personne qui répond (webhook). Répondre directement dans le salon marche aussi : tout est historisé dans le panel, pièces jointes du client comprises (elles sont téléchargées et conservées, car les liens Discord expirent).
+4. Le ticket se ferme depuis le panel (ou par `/close`) avec un motif, un message d'adieu optionnel, une demande de note de 1 à 5 et l'envoi de la transcription. Le client ne peut plus écrire. Le ticket peut être rouvert, et son salon supprimé une fois fermé.
 
 ## Le panel
 
-- **Plusieurs serveurs** : un sélecteur en haut ; chaque ticket est rattaché au serveur où il a été ouvert, avec une limite d'un ticket actif par utilisateur et par serveur. Les pastilles signalent ce qui attend sur les autres serveurs.
-- **Qui doit répondre** : « En attente du support » (le client a écrit en dernier) ou « En attente du client » (le support a répondu). Le panel s'ouvre sur ce qui attend le support ; les onglets « En attente du client » et « Tout » sont à côté, les cartes de compteurs filtrent par statut, et la recherche porte sur tous les tickets.
-- **Statut automatique** : un ticket est « Ouvert » tant que personne du support n'a répondu, puis passe « En cours » au nom du premier qui répond (panel ou salon Discord). Seuls Fermer, Rouvrir et Supprimer le salon sont manuels.
-- **Conversation en plein écran** : cliquer un ticket l'ouvre seul, le curseur dans la zone de réponse. Chaque ticket a son adresse (`#/t/12`) : précédent, rechargement et liens partagés fonctionnent. Échap ou « ← Tickets » revient à la liste. Les brouillons sont conservés par ticket.
-- **Temps réel** : messages et changements de statut arrivent en direct (Server-Sent Events), avec un rafraîchissement de secours.
-- **Images et liens** : les pièces jointes et les liens s'affichent dans la conversation, avec une visionneuse (clic pour agrandir, flèches, Échap).
+L'interface est en anglais et sombre, et suit le design system Bot Creator.
+
+- **Plusieurs serveurs** : un sélecteur en haut ; chaque ticket est rattaché au serveur où il a été ouvert, avec une limite d'un ticket actif par utilisateur et par serveur.
+- **Vues** : « Waiting on us » (le client a écrit en dernier, vue d'ouverture), « Waiting on customer », « Assigned to me », « Unassigned », « All open », « Closed », et les tags en barre latérale. Filtres par priorité, tag, responsable et langue ; la recherche porte sur les titres, les personnes et le contenu des messages.
+- **Tri et indicateurs** : cartes de compteurs, temps d'attente, export CSV.
+- **Statut automatique** : « Open » tant que personne du support n'a répondu, puis « In progress » au nom du premier qui répond (panel ou salon Discord). Fermer, Rouvrir et Supprimer le salon sont manuels.
+- **Conversation en plein écran** : chaque ticket a son adresse (`#/t/12`), les brouillons sont conservés par ticket, et un panneau latéral donne le client, les détails, les temps de réponse, l'activité (journal d'audit), les pièces jointes et les tickets précédents. Sous 1100 px, ce panneau devient une feuille « Details ».
+- **Équipe** : assignation, priorité, tags, **notes internes** (jamais envoyées à Discord) et **réponses prédéfinies** (tapez `/` dans la zone de réponse, gestion depuis le même menu).
+- **Composer** : pièces jointes (10 fichiers, 25 Mo chacun, 40 Mo par envoi ; png, jpg, gif, webp, pdf, txt, log, md, json, csv, zip), glisser-déposer, collage d'images, lien avec aperçu. Un fichier refusé par Discord est signalé par son nom.
+- **Métriques** : première réponse et résolution (médianes), attente la plus longue, satisfaction, sur 7, 30 ou 90 jours.
+- **Transcription** : bouton de téléchargement (`.txt`, messages publics seulement, sans notes internes).
+- **Clavier** : `/` recherche, `j` et `k` pour se déplacer, Entrée pour ouvrir, `r` répondre, `n` note interne, `c` fermer, Échap, `?` pour la liste.
+- **Temps réel** (Server-Sent Events) et notifications du navigateur (la cloche).
 - **Connexion Discord (OAuth2)** ou simple mot de passe. Les super-admins voient tous les serveurs du bot ; les autres voient ceux où ils ont « Gérer le serveur ».
+
+![Métriques](docs/metrics.png)
 
 ![Menu des serveurs](docs/guilds-menu.png)
 
 ## Côté utilisateur : 13 langues
 
-Tout ce que voit l'utilisateur sur Discord est dans sa langue (`interaction.locale`) : message d'accueil, fenêtre de création, panneau `/setup`, descriptions des commandes slash, erreurs, confirmations, messages de fermeture et de réouverture. La langue est mémorisée sur le ticket, donc les messages postés depuis le panel la suivent aussi.
+La langue par défaut est l'**anglais**. Le français n'apparaît que pour un client dont la langue est le français. Tout ce que voit **une personne** sur Discord est dans sa langue (`interaction.locale`) : message d'accueil, fenêtre de création, descriptions des commandes slash, erreurs, confirmations, messages de fermeture et de réouverture, boutons de note. La langue est mémorisée sur le ticket, donc les messages postés depuis le panel la suivent aussi. Seul le message public de `/setup` ne suit pas la langue : il est toujours en anglais.
 
-Langues : anglais (par défaut), français, espagnol, allemand, portugais, italien, néerlandais, polonais, russe, turc, japonais, coréen, chinois. Les textes sont dans `src/i18n.ts`.
+Langues : anglais (par défaut), français, espagnol, allemand, portugais, italien, néerlandais, polonais, russe, turc, japonais, coréen, chinois. Les textes par langue sont dans `src/i18n.ts` ; tout le reste (panel, notes système, erreurs d'API, journaux) est en anglais, et `tests/english-default.test.ts` échoue si du français réapparaît hors de ce fichier.
 
-Le support se fait **en anglais** : hors anglais, l'accueil le précise et indique qu'une solution sera trouvée si l'utilisateur n'est pas à l'aise. Le panel admin est en français.
+Le support se fait **en anglais** : hors anglais, l'accueil le précise.
 
 ## Démarrage
 
@@ -53,6 +62,7 @@ Le bot demande l'intent privilégié **Message Content** (portail développeur D
 | `ADMIN_IDS` | Super-admins (tous les serveurs), IDs séparés par des virgules (vide = propriétaire de l'application) |
 | `PANEL_PASSWORD` | Mode sans OAuth : mot de passe du panel (généré et affiché au démarrage si absent) |
 | `SUPPORT_ROLE_ID`, `TICKET_CATEGORY_ID` | Optionnels : rôle staff et catégorie des salons |
+| `ATTACHMENTS_DIR` | Dossier des pièces jointes (défaut : `attachments` à côté de la base ; `/data/attachments` dans Docker) |
 
 ### Connexion Discord (OAuth2)
 
@@ -90,4 +100,10 @@ bun run scripts/demo.ts    # panel avec données fictives, sans Discord (mot de 
 
 ## Architecture
 
-`src/tickets.ts` (états + SQLite) → `src/desk.ts` (logique métier, interface `Gateway` vers Discord) → `src/bot/` (interactions, webhooks) et `src/web.ts` (API + auth + flux temps réel). `src/i18n.ts` contient les textes traduits, `public/index.html` est le panel (un seul fichier, sans dépendance).
+`src/tickets.ts` (états + SQLite, recherche, réponses prédéfinies, journal d'audit) et `src/metrics.ts` → `src/desk.ts` (logique métier, interface `Gateway` vers Discord) → `src/bot/` (interactions, webhooks, embeds, téléchargement des pièces jointes) et `src/web.ts` (API + auth + flux temps réel + fichiers statiques de `public/`). `src/storage.ts` stocke et valide les pièces jointes, `src/unfurl.ts` fabrique les aperçus de lien (protégé contre le SSRF), `src/i18n.ts` contient les textes par langue. Le panel est dans `public/` (`index.html`, `app.css`, `app.js`, `composer.js`, `lib.js`, sans dépendance). `assets/embed/` contient la bannière et Bibi. L'API est décrite dans `docs/api-contract.md`.
+
+## Limites connues
+
+- Les envois de fichiers, les embeds avec images jointes, les boutons de note et la transcription n'ont pas été essayés contre un vrai serveur Discord (les tests n'ont pas de réseau).
+- L'aperçu de lien reste exposé au « DNS rebinding » entre la vérification et la connexion ; il est réservé au personnel connecté et ne renvoie que des métadonnées.
+- Il n'y a pas de thème clair (le design est sombre uniquement) ni de progression d'envoi par fichier.

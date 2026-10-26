@@ -61,15 +61,15 @@ export class DiscordOAuth implements OAuthProvider {
         redirect_uri: this.cfg.redirectUri,
       }),
     });
-    if (!tokenRes.ok) throw new Error(`Discord a refusé le code (${tokenRes.status})`);
+    if (!tokenRes.ok) throw new Error(`Discord rejected the code (${tokenRes.status})`);
     const { access_token } = (await tokenRes.json()) as { access_token: string };
 
     const userRes = await this.http(`${API}/users/@me`, { headers: { authorization: `Bearer ${access_token}` } });
-    if (!userRes.ok) throw new Error(`Lecture du profil impossible (${userRes.status})`);
+    if (!userRes.ok) throw new Error(`Could not read the profile (${userRes.status})`);
     const u = (await userRes.json()) as { id: string; username: string; global_name?: string | null; avatar?: string | null };
 
     const guildsRes = await this.http(`${API}/users/@me/guilds`, { headers: { authorization: `Bearer ${access_token}` } });
-    if (!guildsRes.ok) throw new Error(`Lecture des serveurs impossible (${guildsRes.status})`);
+    if (!guildsRes.ok) throw new Error(`Could not read the servers (${guildsRes.status})`);
     const guilds = ((await guildsRes.json()) as { id: string; permissions: string }[]).map((g) => ({
       id: g.id,
       permissions: String(g.permissions),

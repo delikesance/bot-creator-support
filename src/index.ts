@@ -16,8 +16,9 @@ const lazy: Gateway = {
   send: (c, t, o) => real!.send(c, t, o),
   setUserLocked: (c, u, l) => real!.setUserLocked(c, u, l),
   deleteChannel: (c) => real!.deleteChannel(c),
+  askRating: (c, t, l) => real!.askRating(c, t, l),
 };
-const desk = new SupportDesk(tickets, lazy, { maxActivePerUser: 1 });
+const desk = new SupportDesk(tickets, lazy, { maxActivePerUser: 1, attachmentsDir: cfg.attachmentsDir });
 
 await startBot(cfg, desk, (client) => (real = new DiscordGateway(client, cfg)));
 // Anciens tickets (avant le multi-serveurs) : rattachés au serveur de test.
@@ -27,10 +28,10 @@ let oauth: DiscordOAuth | undefined;
 if (cfg.oauthClientSecret) {
   const adminIds = cfg.adminIds.length ? cfg.adminIds : await fetchApplicationOwners(cfg.token);
   oauth = new DiscordOAuth({ clientId: cfg.clientId, clientSecret: cfg.oauthClientSecret, redirectUri: cfg.redirectUri, adminIds });
-  console.log(`Connexion au panel via Discord OAuth2 (super-admins : ${adminIds.join(", ") || "aucun"} ; les gérants de serveur accèdent à leur serveur)`);
-  console.log(`Redirection à déclarer dans le portail Discord : ${cfg.redirectUri}`);
+  console.log(`Panel sign-in through Discord OAuth2 (super-admins: ${adminIds.join(", ") || "none"}; server managers access their own server)`);
+  console.log(`Redirect URI to declare in the Discord developer portal: ${cfg.redirectUri}`);
 }
 
-Bun.serve({ port: cfg.port, idleTimeout: 60, fetch: createHandler(desk, cfg, oauth, { list: () => real?.list() ?? [] }) });
+Bun.serve({ port: cfg.port, idleTimeout: 60, maxRequestBodySize: 48 * 1024 * 1024, fetch: createHandler(desk, cfg, oauth, { list: () => real?.list() ?? [] }) });
 console.log(`Panel admin : http://localhost:${cfg.port}`);
-if (!oauth && cfg.passwordGenerated) console.log(`Mot de passe du panel (généré) : ${cfg.panelPassword}`);
+if (!oauth && cfg.passwordGenerated) console.log(`Panel password (generated): ${cfg.panelPassword}`);
