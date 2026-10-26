@@ -1,5 +1,5 @@
-/* Support desk : thème sombre unique, jetons du Bot Creator Design System.
-   Un seul rayon (2 px), 999 px réservé aux avatars, pastilles et barres. Ombres en pixels, sans flou. */
+/* Support desk: single dark theme, Bot Creator Design System tokens.
+   One radius (2 px), 999 px reserved for avatars, pills and bars. Pixel shadows, no blur. */
 :root {
   --bg:#0B0B0C; --surface:#141415; --raised:#1C1C1E; --border:#2A2A2D; --faint:#5C5B58;
   --ink:#F4F2EE; --ink2:#C9C7C2; --muted:#AEACA8;
@@ -28,7 +28,7 @@ button { cursor:pointer; }
 .truncate { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .spacer { flex:1; }
 
-/* ---------- Mouvement ---------- */
+/* ---------- Motion ---------- */
 @keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes fade { from { opacity:0; } to { opacity:1; } }
 @keyframes pop { from { opacity:0; transform:translateY(-4px) scale(.98); } to { opacity:1; transform:none; } }
@@ -94,7 +94,7 @@ button { cursor:pointer; }
 @keyframes bbWelcome { 0%,100% { transform:translateY(0) rotate(0); } 30% { transform:translateY(-5%) rotate(-7deg) scale(1.03); } 70% { transform:translateY(-3.5%) rotate(7deg) scale(1.03); } }
 @keyframes bbBlink { 0%,92%,100% { transform:scaleY(1); } 95% { transform:scaleY(.1); } }
 
-/* Menus déroulants : un seul modèle pour serveur, filtres, tri, avatar. */
+/* Dropdown menus: one model for server, filters, sort, avatar. */
 .pop { position:relative; display:inline-flex; }
 .menu { position:absolute; top:calc(100% + 6px); left:0; min-width:220px; max-width:min(92vw, 340px); max-height:min(60vh, 380px); overflow:auto; background:var(--raised); border:1px solid var(--border); border-radius:2px; box-shadow:var(--pix); padding:6px; z-index:40; animation:pop .16s var(--ease) both; transform-origin:top left; }
 .menu.right { left:auto; right:0; transform-origin:top right; }
@@ -117,7 +117,7 @@ button { cursor:pointer; }
 .sel.lg { height:36px; }
 .sel .chev { color:var(--muted); }
 
-/* ---------- Coque ---------- */
+/* ---------- Shell ---------- */
 .shell { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; }
 header.top { height:64px; flex:none; display:flex; align-items:center; gap:16px; padding:0 24px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:30; }
 .brand { display:flex; align-items:center; gap:10px; color:var(--ink); text-decoration:none; font-weight:700; min-width:0; }
@@ -169,7 +169,7 @@ main.inbox { flex:1 1 0; min-width:0; padding:28px 32px 48px; display:flex; flex
 .filters .count { margin-left:8px; }
 .filters .clear { background:none; border:0; color:var(--accent-ink); font:600 13px var(--sans); text-decoration:underline; text-underline-offset:3px; padding:6px; }
 
-/* ---------- Liste ---------- */
+/* ---------- List ---------- */
 .list { overflow:hidden; }
 .row { display:flex; gap:16px; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; position:relative; transition:background .15s, box-shadow .2s; }
 .row:last-child { border-bottom:0; }
@@ -251,7 +251,7 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .thumb:hover { border-color:var(--accent-line); }
 .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
 
-/* ---------- Zone de réponse ---------- */
+/* ---------- Reply box ---------- */
 .composer { flex:none; border-top:1px solid var(--border); background:var(--surface); padding:0 32px 16px; display:flex; flex-direction:column; position:relative; }
 .ctabs { display:flex; align-items:center; gap:4px; border-bottom:1px solid var(--border); flex-wrap:wrap; min-height:41px; }
 .ctab { height:40px; padding:0 16px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font:600 14px var(--sans); margin-bottom:-1px; transition:color .15s, border-color .15s; }
@@ -299,7 +299,7 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .slashmenu.menu { min-width:0; max-width:none; }
 .cmd { font:700 13px var(--mono); color:var(--accent-ink); min-width:116px; flex:none; }
 
-/* ---------- Dialogues, toasts ---------- */
+/* ---------- Dialogs, toasts ---------- */
 .scrim { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; padding:20px; z-index:60; animation:fade .16s both; }
 .scrim.out { opacity:0; transition:opacity .14s; }
 .dialog { background:var(--raised); border:1px solid var(--border); border-radius:2px; box-shadow:var(--pix); padding:20px; max-width:440px; width:100%; max-height:calc(100dvh - 40px); overflow:auto; display:flex; flex-direction:column; gap:14px; animation:pop .2s var(--ease) both; transform-origin:center; }
@@ -321,7 +321,7 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .toast.ok { border-color:var(--accent-line); border-left-color:var(--accent); }
 .toast.out { animation:toastOut .2s ease both; }
 
-/* ---------- Visionneuse ---------- */
+/* ---------- Viewer ---------- */
 .lb { position:fixed; inset:0; z-index:70; background:rgba(8,8,9,.95); display:flex; align-items:center; justify-content:center; padding:72px 16px 24px; animation:fade .18s both; }
 .lb-bar { position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:10px; padding:14px 20px; }
 .lb-count { font:500 12px var(--mono); letter-spacing:.08em; color:var(--muted); }
@@ -332,7 +332,7 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .lb-nav:hover, .lb-nav:focus-visible { border-color:var(--accent-line); }
 .lb-nav.prev { left:16px; } .lb-nav.next { right:16px; }
 
-/* ---------- Connexion ---------- */
+/* ---------- Sign in ---------- */
 .login-wrap { min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:20px; }
 .login { width:100%; max-width:380px; padding:32px; display:flex; flex-direction:column; gap:16px; animation:rise .5s var(--ease) both; box-shadow:var(--pix); }
 .login h1 { font:600 22px/1.25 var(--sans); }
@@ -341,7 +341,19 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .err { color:var(--danger-ink); min-height:1.4em; font-size:14px; }
 .shake { animation:shake .35s; }
 
-/* ---------- Adaptatif ---------- */
+/* ---------- Activity and metrics ---------- */
+.audit { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+.audit li { display:grid; grid-template-columns:8px 1fr; column-gap:10px; align-items:start; }
+.audit .sq { margin-top:6px; --c:var(--accent-ink); }
+.audit .what { display:flex; flex-direction:column; gap:2px; min-width:0; font-size:14px; }
+.audit .what span { color:var(--muted); font-size:13px; }
+.audit li > .small { grid-column:2; }
+.mgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
+.mbar { padding:20px; display:flex; flex-direction:column; gap:12px; text-decoration:none; color:var(--ink); }
+.mbar.link:hover { border-color:var(--accent-line); background:var(--raised); }
+.opt.manage { border-top:1px solid var(--border); margin-top:4px; }
+
+/* ---------- Responsive ---------- */
 @media (max-width:1100px) { .aside { display:none; } }
 @media (max-width:900px) {
   header.top { flex-wrap:wrap; height:auto; min-height:64px; padding:10px 16px; gap:10px 12px; }

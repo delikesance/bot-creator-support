@@ -1,5 +1,5 @@
-// Zone de réponse : texte, pièces jointes (bouton, glisser-déposer, collage), lien avec aperçu,
-// note interne et réponses enregistrées (ces deux derniers n'apparaissent que si le serveur les gère).
+// Reply box: text, attachments (button, drag and drop, paste), link with preview,
+// internal note and saved replies.
 import { h, icon, api, post, upload, bytes, extOf, toast, modal } from "./lib.js";
 
 const ALLOWED = new Set(["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "log", "md", "json", "csv", "zip"]);
@@ -11,7 +11,7 @@ let seq = 0;
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 const validUrl = (s) => { try { return /^https?:$/.test(new URL(s).protocol); } catch { return false; } };
 
-/** Aperçu de lien : même carte dans la fenêtre d'insertion et sous le texte. */
+/** Link preview: same card in the insert dialog and under the text. */
 function previewCard(p, onRemove) {
   return h("div", { class: "file", style: "align-items:flex-start" },
     h("span", { class: "lico" }, icon("link", 16)),
@@ -22,7 +22,7 @@ function previewCard(p, onRemove) {
     onRemove ? h("button", { class: "btn icon ghost sm", type: "button", "aria-label": "Remove preview", style: "width:30px", onclick: onRemove }, icon("x", 14)) : null);
 }
 
-/** `GET /api/unfurl` : absent ou en erreur, on n'affiche simplement rien. */
+/** `GET /api/unfurl` : missing or failing, nothing is shown. */
 async function unfurl(url, signal) {
   try { const p = await api("/unfurl?url=" + encodeURIComponent(url), { signal }); return p?.url ? p : null; }
   catch { return null; }
@@ -63,8 +63,8 @@ function linkDialog(selected) {
 }
 
 /**
- * opts : { ticket, me, caps:{notes,replies}, getReplies(): Promise<{name,text}[]|null>, onSent(res) }
- * Renvoie { el, overlay, update(next), addFiles(list), showDrop(bool), focus() }.
+ * opts: { ticket, me, caps:{notes,replies}, getReplies(): Promise<{name,text}[]|null>, onSent(res) }
+ * Returns { el, overlay, update(next), addFiles(list), showDrop(bool), focus() }.
  */
 export function createComposer(opts) {
   let { ticket, me, caps } = opts;
@@ -90,7 +90,7 @@ export function createComposer(opts) {
   const closed = () => ticket.status === "closed";
   const say = (msg) => { live.textContent = ""; setTimeout(() => { live.textContent = msg; }, 20); };
 
-  /* ----- Pièces jointes ----- */
+  /* ----- Attachments ----- */
   function addFiles(list) {
     if (closed()) return;
     const added = [];
@@ -140,12 +140,12 @@ export function createComposer(opts) {
     }
   }
 
-  /* ----- Aperçu de lien sous le texte ----- */
+  /* ----- Link preview under the text ----- */
   function renderPreview() {
     prevEl.replaceChildren(...(preview ? [previewCard(preview, () => { preview = null; renderPreview(); ta.focus(); })] : []));
   }
 
-  /* ----- Barre d'outils et onglets ----- */
+  /* ----- Toolbar and tabs ----- */
   function chrome() {
     const isClosed = closed();
     el.classList.toggle("closed", isClosed);
@@ -176,13 +176,13 @@ export function createComposer(opts) {
     send.classList.toggle("busy", sending);
   }
 
-  /* ----- Texte ----- */
+  /* ----- Text ----- */
   const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 240) + "px"; };
   ta.addEventListener("input", () => { grow(); sync(); openSlash(); });
   ta.addEventListener("paste", (e) => {
     const list = [...(e.clipboardData?.items ?? [])].filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter(Boolean);
     if (!list.length) return;
-    // Une capture d'écran collée s'appelle « image.png » : on lui donne un nom lisible.
+    // A pasted screenshot is named "image.png": give it a readable name.
     const stamp = new Date().toTimeString().slice(0, 8).replaceAll(":", "");
     const named = list.map((f, i) => (/^image\.\w+$/i.test(f.name) || !f.name) ? new File([f], `screenshot-${stamp}${list.length > 1 ? "-" + (i + 1) : ""}.${extOf(f.name) || (f.type.split("/")[1] ?? "png")}`, { type: f.type }) : f);
     if (!e.clipboardData.getData("text/plain")) e.preventDefault();
@@ -191,8 +191,9 @@ export function createComposer(opts) {
   ta.addEventListener("keydown", (e) => {
     if (slash) {
       const n = slash.items.length;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); slash.i = (slash.i + (e.key === "ArrowDown" ? 1 : -1) + n) % n; renderSlash(); return; }
-      if ((e.key === "Enter" || e.key === "Tab") && n) { e.preventDefault(); pickSlash(slash.items[slash.i]); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); slash.i = (slash.i + (e.key === "ArrowDown" ? 1 : -1) + n) % n; slash.nav = true; renderSlash(); return; }
+      // The "manage" entry only opens on purpose: a typed path like /usr must not trap Enter.
+      if ((e.key === "Enter" || e.key === "Tab") && (!slash.items[slash.i].manage || slash.nav)) { e.preventDefault(); pickSlash(slash.items[slash.i]); return; }
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeSlash(); return; }
     }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
@@ -204,7 +205,7 @@ export function createComposer(opts) {
     const s = ta.selectionStart, e = ta.selectionEnd;
     const r = await linkDialog(ta.value.slice(s, e));
     if (!r) return ta.focus();
-    // Texte différent de l'adresse : syntaxe [texte](adresse) ; le serveur décide de la forme postée sur Discord.
+    // Text differs from the address: [text](url) syntax; the server decides the form posted on Discord.
     const out = r.text && r.text !== r.url ? `[${r.text}](${r.url})` : r.url;
     ta.setRangeText(out, s, e, "end");
     ta.dispatchEvent(new Event("input"));
@@ -212,7 +213,7 @@ export function createComposer(opts) {
     ta.focus();
   }
 
-  /* ----- Réponses enregistrées : « / » en début de ligne ----- */
+  /* ----- Saved replies: "/" at the start of a line ----- */
   const slashEl = h("div", { class: "menu slashmenu", role: "listbox", "aria-label": "Saved replies", hidden: true });
   box.append(slashEl);
   async function openSlash(force = false) {
@@ -220,20 +221,19 @@ export function createComposer(opts) {
     const before = ta.value.slice(0, ta.selectionStart);
     const m = /(^|\n)\/([a-z0-9-]*)$/.exec(before);
     if (!m && !force) return closeSlash();
-    const list = await opts.getReplies?.();
-    if (!list?.length) return closeSlash();
+    const list = (await opts.getReplies?.()) ?? [];
     const q = m?.[2] ?? "";
-    const items = list.filter((r) => r.name.includes(q));
+    const items = [...list.filter((r) => r.name.includes(q)), { manage: true }];
     slash = { items, i: 0, start: m ? before.length - q.length - 1 : ta.selectionStart };
     renderSlash();
   }
   function renderSlash() {
     if (!slash) return;
     slashEl.hidden = false;
-    slashEl.replaceChildren(...(slash.items.length ? slash.items.map((r, i) =>
-      h("div", { class: "opt", role: "option", "aria-selected": String(i === slash.i), onmousedown: (e) => { e.preventDefault(); pickSlash(r); } },
-        h("span", { class: "cmd" }, "/" + r.name), h("span", { class: "grow truncate", style: "color:var(--ink2)" }, r.text)))
-      : [h("div", { class: "small", style: "padding:10px" }, "No saved reply matches.")]));
+    slashEl.replaceChildren(...slash.items.map((r, i) =>
+      h("div", { class: "opt" + (r.manage ? " manage" : ""), role: "option", "aria-selected": String(i === slash.i), onmousedown: (e) => { e.preventDefault(); pickSlash(r); } },
+        r.manage ? h("span", { class: "grow", style: "color:var(--ink2)" }, slash.items.length === 1 ? "No saved replies yet. Add one" : "Manage saved replies")
+          : [h("span", { class: "cmd" }, "/" + r.name), h("span", { class: "grow truncate", style: "color:var(--ink2)" }, r.text)])));
     slashEl.querySelector("[aria-selected=true]")?.scrollIntoView({ block: "nearest" });
   }
   function closeSlash() { slash = null; slashEl.hidden = true; }
@@ -241,13 +241,14 @@ export function createComposer(opts) {
     const { start } = slash;
     const end = ta.selectionStart;
     closeSlash();
+    if (r.manage) { ta.setRangeText("", start, end, "end"); ta.dispatchEvent(new Event("input")); opts.manageReplies?.(); return; }
     ta.setRangeText(r.text.replaceAll("{customer}", ticket.userName), start, end, "end");
     ta.dispatchEvent(new Event("input"));
     ta.focus();
   }
   ta.addEventListener("blur", () => setTimeout(() => ta.isConnected && closeSlash(), 120));
 
-  /* ----- Envoi ----- */
+  /* ----- Send ----- */
   async function submit() {
     const content = ta.value.trim();
     const ready = files.filter((f) => !f.error);
