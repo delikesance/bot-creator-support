@@ -18,9 +18,8 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Config } from "../config";
-import type { Gateway, SupportDesk } from "../desk";
+import type { Gateway, OutFile, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
-import { messageContent } from "./content";
 import { pack } from "../i18n";
 import { registerCommands } from "./register";
 
@@ -96,14 +95,16 @@ export class DiscordGateway implements Gateway {
   async send(
     channelId: string,
     text: string,
-    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string } },
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[] },
   ): Promise<void> {
     const ch = await this.channel(channelId);
+    const files = opts?.files?.map((f) => ({ attachment: Buffer.from(f.data), name: f.name }));
     if (opts?.as) {
       try {
         const hook = await this.webhook(ch);
         await hook.send({
-          content: text,
+          content: text || undefined,
+          files,
           username: opts.as.name.slice(0, 80),
           avatarURL: opts.as.avatarUrl,
           allowedMentions: { parse: [] },
@@ -118,7 +119,8 @@ export class DiscordGateway implements Gateway {
     const components =
       opts?.controls === "active" ? [activeRow()] : opts?.controls === "closed" ? [closedRow()] : [];
     await ch.send({
-      content: text,
+      content: text || undefined,
+      files,
       components,
       // Seul le message d'accueil peut notifier l'auteur ; les réponses du panel ne ping personne.
       allowedMentions: opts?.controls === "active" ? { parse: ["users"] } : { parse: [] },
@@ -223,8 +225,9 @@ export async function startBot(cfg: Config, desk: SupportDesk, makeGateway: (c: 
 
   client.on(Events.MessageCreate, (m) => {
     if (m.author.bot || !m.inGuild()) return;
-    const content = messageContent(m.content, m.attachments.map((a) => a.url));
-    desk.recordDiscordMessage(m.channelId, { id: m.author.id, name: m.author.username }, content);
+    // Les pièces jointes sont téléchargées par le desk : l'URL du CDN expire, le panel sert sa propre copie.
+    const files = m.attachments.map((a) => ({ name: a.name, size: a.size, url: a.url }));
+    void desk.recordDiscordMessage(m.channelId, { id: m.author.id, name: m.author.username }, m.content, files);
   });
 
   client.once(Events.ClientReady, async (c) => {
