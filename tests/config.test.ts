@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loadConfig } from "../src/config";
+import { join } from "node:path";
 
 const TOKEN = "MTQ5NjIzNjc2OTIzMzA3NjQxNQ.abc.def";
 
@@ -78,5 +79,17 @@ describe("OAuth2 du panel", () => {
   test("URL publique par défaut basée sur le port", () => {
     const c = loadConfig({ ...base, PORT: "8080" });
     expect(c.redirectUri).toBe("http://localhost:8080/auth/callback");
+  });
+});
+
+describe("pièces jointes", () => {
+  const base = { DISCORD_TOKEN: TOKEN, TEST_GUILD_ID: "1" };
+  test("dossier par défaut à côté de la base", () => {
+    const c = loadConfig({ ...base, DB_PATH: "/data/tickets.db" });
+    expect(c.attachmentsDir).toBe(join("/data", "attachments"));
+    expect(loadConfig(base).attachmentsDir).toBe(join("data", "attachments"));
+  });
+  test("ATTACHMENTS_DIR explicite prioritaire", () => {
+    expect(loadConfig({ ...base, ATTACHMENTS_DIR: " /mnt/files " }).attachmentsDir).toBe("/mnt/files");
   });
 });

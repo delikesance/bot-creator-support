@@ -4,7 +4,7 @@ COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:1-slim
-ENV NODE_ENV=production DB_PATH=/data/tickets.db PORT=3000
+ENV NODE_ENV=production DB_PATH=/data/tickets.db ATTACHMENTS_DIR=/data/attachments PORT=3000
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./

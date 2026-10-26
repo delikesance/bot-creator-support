@@ -7,6 +7,7 @@ services:
       # Le .env local est en développement ; décommente pour passer en production :
       # NODE_ENV: production
       DB_PATH: /data/tickets.db
+      ATTACHMENTS_DIR: /data/attachments
     ports:
       - "3000:3000"
     volumes:
