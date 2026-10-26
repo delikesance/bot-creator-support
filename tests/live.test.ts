@@ -135,7 +135,7 @@ describe("flux temps réel (SSE)", () => {
 
 describe("conversation côté utilisateur", () => {
   test("aucun bouton de staff dans le salon : tout se gère depuis le panel", async () => {
-    const opts: unknown[] = [];
+    const opts: ({ controls?: string } | undefined)[] = [];
     const d = new SupportDesk(new TicketService(openDb(":memory:")), { ...gw, send: async (_c, _t, o) => void opts.push(o) });
     const t = await d.open({ ...user, subject: "a", description: "d" });
     await d.close(t.id, "Staff");
