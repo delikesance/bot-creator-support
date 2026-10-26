@@ -8,7 +8,7 @@ export async function downloadFile(
   const max = opts.maxBytes ?? MAX_FILE_BYTES;
   const res = await (opts.fetch ?? fetch)(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  if (Number(res.headers.get("content-length") ?? 0) > max) throw new Error("fichier trop volumineux");
+  if (Number(res.headers.get("content-length") ?? 0) > max) throw new Error("file too large");
   if (!res.body) return new Uint8Array();
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -19,7 +19,7 @@ export async function downloadFile(
     total += value.byteLength;
     if (total > max) {
       await reader.cancel().catch(() => {});
-      throw new Error("fichier trop volumineux");
+      throw new Error("file too large");
     }
     chunks.push(value);
   }
