@@ -122,12 +122,7 @@
   .wait.support { color:var(--accent-ink); } .wait.support i { background:currentColor; }
   .wait.customer { color:var(--muted); }
   .row .t small .wait { margin-left:8px; }
-  .chips { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .chip { height:30px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; background:transparent; border:1px solid var(--border); border-radius:2px; font-size:13px; font-weight:600; color:var(--muted); transition:color .15s, border-color .15s, background .15s; }
-  .chip:hover { color:var(--ink); border-color:var(--accent-line); }
-  .chip.on { background:var(--accent-deep); color:var(--accent-ink); border-color:var(--accent-line); }
-  .chip.customer.on { background:var(--raised); color:var(--ink); }
-  .chip b { font:500 12px var(--mono); opacity:.85; }
+  .tab.todo span { color:var(--accent-ink); opacity:1; font-weight:700; }
   .tab span { font:500 12px var(--mono); margin-left:6px; opacity:.8; }
 
   .row { width:100%; display:flex; align-items:center; gap:14px; padding:14px 16px; border:0; border-bottom:1px solid var(--border); background:none; text-align:left; transition:background .15s, box-shadow .2s; }
@@ -209,8 +204,9 @@ const STATUS = {
   in_progress: { label:"En cours", color:"#FFB86B", hint:"Le support a répondu" },
   closed:      { label:"Fermé",    color:"#AEACA8", hint:"Résolus" },
 };
-const TABS = [["", "Tous"], ["open", "Ouverts"], ["in_progress", "En cours"], ["closed", "Fermés"]];
-const state = { wait:"", awaiting:{support:0,customer:0}, me:null, guilds:[], guild:null, menu:false, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
+// Tri du haut : ce qui attend le support d'abord, puis ce qui attend le client, puis tout.
+const TABS = [["support", "En attente du support"], ["customer", "En attente du client"], ["", "Tout"]];
+const state = { wait:"support", awaiting:{support:0,customer:0}, me:null, guilds:[], guild:null, menu:false, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
 const app = document.getElementById("app");
 let lastStats = null;
 
@@ -419,7 +415,7 @@ function visibleTickets() {
   const q = state.query.trim().toLowerCase();
   return state.tickets.filter((t) =>
     (!state.filter || t.status === state.filter) &&
-    (!state.wait || (t.status !== "closed" && t.awaiting === state.wait)) &&
+    (!state.wait || q || (t.status !== "closed" && t.awaiting === state.wait)) &&
     (!q || `${t.id} ${t.subject} ${t.description ?? ""} ${t.userName} ${t.assignee ?? ""}`.toLowerCase().includes(q)));
 }
 
@@ -430,7 +426,7 @@ function kpi(key, i) {
   if (lastStats && lastStats[key] !== state.stats[key]) n.classList.add("pop");
   return h("button", { class:"kpi" + (state.filter === key ? " active" : "") + (state.animate ? " rise" : ""), style:`--c:${s.color};--i:${i}`,
     "aria-pressed":String(state.filter === key),
-    onclick: () => { state.filter = state.filter === key ? "" : key; renderMain(); } },
+    onclick: () => { state.filter = state.filter === key ? "" : key; if (state.filter) state.wait = ""; renderMain(); } },
     h("div", { class:"eyebrow lbl" }, h("span", { class:"sq" }), s.label + "s"), n, h("small", {}, s.hint));
 }
 
@@ -452,18 +448,17 @@ function renderList() {
   if (state.loading) body = [1, 2, 3, 4].map(() => h("div", { class:"skel" }));
   else if (items.length) body = items.map(row);
   else body = [h("div", { class:"empty" }, bibi("empty", 44),
-    state.tickets.length ? "Aucun ticket ne correspond à ta recherche ou à ton filtre." : "Aucun ticket pour l'instant. Tout est calme.")];
-  const tabs = h("div", { class:"tabs", role:"tablist" }, TABS.map(([k, label]) => {
-    const count = k ? state.stats[k] : state.tickets.length;
-    return h("button", { class:"tab" + (state.filter === k ? " on" : ""), role:"tab", "aria-selected":String(state.filter === k),
-      onclick: () => { state.filter = k; renderMain(); } }, label, h("span", {}, String(count)));
+    !state.tickets.length ? "Aucun ticket pour l'instant. Tout est calme."
+      : state.wait === "support" && !state.filter && !state.query.trim() ? "Rien n'attend le support. Tout est à jour !"
+      : "Aucun ticket ne correspond à ta recherche ou à ton filtre.")];
+  const on = (k) => !state.filter && state.wait === k;
+  const tabs = h("div", { class:"tabs", role:"tablist", "aria-label":"Trier les tickets" }, TABS.map(([k, label]) => {
+    const count = k ? state.awaiting[k] : state.tickets.length;
+    return h("button", { class:"tab" + (on(k) ? " on" : "") + (k === "support" && count ? " todo" : ""), role:"tab", "aria-selected":String(on(k)),
+      title: k === "support" ? "Le client a écrit en dernier : à toi de répondre" : k === "customer" ? "Tu as répondu : on attend le client" : "Tous les tickets, fermés compris",
+      onclick: () => { state.wait = k; state.filter = ""; renderMain(); } }, label, h("span", {}, String(count)));
   }));
-  const chips = h("div", { class:"chips", role:"group", "aria-label":"Filtrer selon qui doit répondre" }, ["support", "customer"].map((k) =>
-    h("button", { class:"chip " + k + (state.wait === k ? " on" : ""), "aria-pressed":String(state.wait === k),
-      title: k === "support" ? "Le client a écrit : à toi de répondre" : "Tu as répondu : on attend le client",
-      onclick: () => { state.wait = state.wait === k ? "" : k; renderMain(); } },
-      WAIT[k], h("b", {}, String(state.awaiting[k])))));
-  return h("section", { class:"panel list" + (state.animate ? " rise" : ""), style:"--i:4" }, tabs, chips, h("div", { class:"items" }, body));
+  return h("section", { class:"panel list" + (state.animate ? " rise" : ""), style:"--i:4" }, tabs, h("div", { class:"items" }, body));
 }
 
 function renderDetail() {
@@ -559,7 +554,7 @@ async function switchGuild(id) {
   state.menu = false;
   if (id === state.guild) return renderMain();
   state.guild = id; store.set("guild", id);
-  state.selected = null; state.detail = null; state.filter = ""; state.wait = ""; state.query = "";
+  state.selected = null; state.detail = null; state.filter = ""; state.wait = "support"; state.query = "";
   if (location.hash) history.replaceState(null, "", location.pathname);
   state.tickets = []; state.loading = true; state.animate = true;
   renderMain();
