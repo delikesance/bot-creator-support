@@ -1,4 +1,4 @@
-// Support desk : coque (en-tête, vues), boîte de réception, conversation plein écran, temps réel.
+// Support desk: shell (header, views), inbox, full-screen conversation, live updates.
 import { h, icon, bibi, api, post, onAuthLost, store, ago, clock, dur, bytes, initials, extOf, plain, toast, modal, confirmDialog } from "./lib.js";
 import { createComposer, LIMITS } from "./composer.js";
 
@@ -23,20 +23,19 @@ const DEFAULT_TARGETS = { firstReplyMs: 900_000, replyMs: 3_600_000 };
 const state = {
   view: "waiting-us", tag: "", fPriority: "", fAssignee: "", fLang: "", sort: null, query: "",
   me: null, guilds: [], guild: null, tickets: [], stats: { open: 0, in_progress: 0, closed: 0 }, awaiting: { support: 0, customer: 0 },
-  tags: null, metrics: null, replies: null, selected: null, detail: null,
+  tags: null, metrics: null, metricsDays: 7, replies: null, audit: [], hits: null, selected: null, detail: null,
   loading: true, online: true, changed: new Set(), animate: true, intro: true, slide: false,
   pop: null, dirty: false, notify: store.get("notify") === "1", tipOff: store.get("tip") === "off",
 };
 const app = document.getElementById("app");
 const composers = new Map();
-let shell = null, lastSig = "", lastKpi = {}, noMetrics = false, metricsAt = 0;
+let shell = null, lastSig = "", lastKpi = {}, metricsAt = 0, metricsKey = "", searchTimer = 0;
 
-/* ---------- Données ---------- */
+/* ---------- Data ---------- */
 const isOpen = (t) => t.status !== "closed";
 const isMine = (t) => (t.assigneeId && state.me?.id && t.assigneeId === state.me.id) || (t.assignee && state.me?.name && t.assignee === state.me.name);
 const targets = () => state.metrics?.targets ?? DEFAULT_TARGETS;
 const since = (t) => t.waitingSince ?? t.updatedAt;
-const hasField = (t, k) => t && t[k] !== undefined;
 
 const VIEW_TEST = {
   "waiting-us": (t) => isOpen(t) && t.awaiting === "support",
@@ -64,23 +63,38 @@ function visible() {
     (!state.fPriority || (t.priority ?? "normal") === state.fPriority) &&
     (!state.fAssignee || (state.fAssignee === "me" ? isMine(t) : state.fAssignee === "none" ? !t.assignee : t.assignee === state.fAssignee)) &&
     (!state.fLang || t.locale === state.fLang) &&
-    (!q || `${t.id} ${t.subject} ${t.description ?? ""} ${t.userName} ${t.assignee ?? ""} ${t.lastMessage?.content ?? ""} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(q)));
+    (!q || state.hits?.has(t.id) || `${t.id} ${t.subject} ${t.description ?? ""} ${t.userName} ${t.assignee ?? ""} ${t.lastMessage?.content ?? ""} ${(t.tags ?? []).join(" ")}`.toLowerCase().includes(q)));
   const order = state.sort ?? (state.view === "waiting-us" ? "oldest" : "newest");
   return list.sort((a, b) => order === "oldest" ? since(a) - since(b) : b.updatedAt - a.updatedAt);
 }
 
-async function loadMetrics() {
-  if (noMetrics || Date.now() - metricsAt < 60_000) return;
-  metricsAt = Date.now();
-  try { state.metrics = await api(`/metrics?guild=${encodeURIComponent(state.guild)}&days=7`); }
-  catch (e) { if (e.message === "auth") throw e; state.metrics = null; if (e.status === 404) noMetrics = true; }
+async function loadMetrics(force = false) {
+  const key = `${state.guild}:${state.metricsDays}`;
+  if (!force && key === metricsKey && Date.now() - metricsAt < 60_000) return;
+  metricsAt = Date.now(); metricsKey = key;
+  try { state.metrics = await api(`/metrics?guild=${encodeURIComponent(state.guild)}&days=${state.metricsDays}`); }
+  catch (e) { if (e.message === "auth") throw e; state.metrics = null; }
+}
+/** Server-side search: subject, customer, description and message content, internal notes included. */
+async function searchServer(q) {
+  try {
+    const r = await api(`/tickets?guild=${encodeURIComponent(state.guild)}&q=${encodeURIComponent(q)}`);
+    if (q !== state.query.trim()) return;
+    state.hits = new Set(r.tickets.map((t) => t.id));
+    state.animate = false; renderContent();
+  } catch (e) { if (e.message !== "auth") state.hits = null; }
+}
+async function loadAudit() {
+  if (!state.selected) { state.audit = []; return; }
+  try { state.audit = (await api(`/audit?ticket=${state.selected}`)).entries ?? []; }
+  catch (e) { if (e.message === "auth") throw e; state.audit = []; }
 }
 let repliesFor = null;
 async function loadReplies() {
   if (repliesFor === state.guild) return;
   repliesFor = state.guild;
-  try { state.replies = (await api(`/replies?guild=${encodeURIComponent(state.guild)}`)).replies ?? null; }
-  catch (e) { if (e.message === "auth") throw e; state.replies = null; }
+  try { state.replies = (await api(`/replies?guild=${encodeURIComponent(state.guild)}`)).replies ?? []; }
+  catch (e) { if (e.message === "auth") throw e; state.replies = []; repliesFor = null; }
 }
 
 async function load() {
@@ -100,14 +114,14 @@ async function load() {
   state.tickets = data.tickets;
   state.stats = data.stats;
   state.awaiting = data.awaiting ?? { support: 0, customer: 0 };
-  state.tags = Array.isArray(data.tags) ? data.tags : null;
+  state.tags = data.tags;
   if (state.selected) {
-    try { state.detail = await api("/tickets/" + state.selected); }
+    try { [state.detail] = await Promise.all([api("/tickets/" + state.selected), loadAudit()]); }
     catch (e) { if (e.message === "auth") throw e; state.selected = null; state.detail = null; }
   }
 }
 
-/* ---------- Menus déroulants ---------- */
+/* ---------- Dropdown menus ---------- */
 function setPop(id) {
   state.pop = id;
   render();
@@ -131,7 +145,7 @@ function menuKeys(e) {
   else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePop(); }
   else if (e.key === "Tab") closePop(false);
 }
-/** items : { label, lead?, small?, checked?, cls?, onpick } | { heading } | { sep:true } */
+/** items: { label, lead?, small?, checked?, cls?, onpick } | { heading } | { sep:true } */
 function dropdown(id, trigger, items, { cls = "chip", right = false, label, title } = {}) {
   const open = state.pop === id;
   const btn = h("button", { class: cls, type: "button", id: "b-" + id, "aria-haspopup": "menu", "aria-expanded": String(open), "aria-label": label, title,
@@ -146,10 +160,16 @@ function dropdown(id, trigger, items, { cls = "chip", right = false, label, titl
   return h("div", { class: "pop" }, btn, menu);
 }
 
-/* ---------- Coque : en-tête, vues ---------- */
+/* ---------- Shell: header, views ---------- */
 function buildShell() {
   const input = h("input", { id: "q", type: "search", placeholder: "Search tickets, people and messages", "aria-label": "Search tickets, people and messages", autocomplete: "off",
-    oninput: (e) => { state.query = e.target.value; state.animate = false; renderSide(); renderContent(); } });
+    oninput: (e) => {
+      state.query = e.target.value; state.animate = false; state.hits = null;
+      clearTimeout(searchTimer);
+      const q = state.query.trim();
+      if (q && state.guild) searchTimer = setTimeout(() => searchServer(q), 220);
+      renderSide(); renderContent();
+    } });
   const field = h("label", { class: "field" }, icon("search", 16), input, h("span", { class: "kbd", "aria-hidden": "true" }, "/"));
   shell = {
     root: h("div", { class: "shell" }), input, field,
@@ -217,6 +237,8 @@ function renderSide() {
   shell.side.replaceChildren(
     h("div", { class: "navgroup" }, h("div", { class: "eyebrow" }, "Views"),
       VIEWS.map(([key, label, c]) => nav(!state.query && state.view === key && !state.tag, () => setView(key), h("span", { class: "sq", style: c ? `--c:${c}` : "" }), label, viewCount(key)))),
+    h("div", { class: "navgroup" }, h("div", { class: "eyebrow" }, "Reports"),
+      nav(state.view === "metrics" && !state.query, () => setView("metrics"), h("span", { class: "sq", style: "--c:var(--accent-ink)" }), "Metrics")),
     tags.length ? h("div", { class: "navgroup" }, h("div", { class: "eyebrow" }, "Tags"),
       tags.map((g) => nav(state.tag === g.name, () => { state.tag = state.tag === g.name ? "" : g.name; if (state.tag) state.view = "open"; state.animate = true; render(); }, h("span", { class: "hash", "aria-hidden": "true" }, "#"), g.name, g.count))) : null,
     state.tipOff ? null : h("aside", { class: "panel tipcard", "aria-label": "Tip" },
@@ -226,14 +248,14 @@ function renderSide() {
 }
 
 function setView(key) {
-  state.view = key; state.tag = ""; state.query = ""; shell.input.value = "";
+  state.view = key; state.tag = ""; state.query = ""; state.hits = null; shell.input.value = "";
   state.fPriority = state.fAssignee = state.fLang = ""; state.sort = null;
   state.animate = true;
   if (state.selected) { closeTicket(); return; }
   render();
 }
 
-/* ---------- Boîte de réception ---------- */
+/* ---------- Inbox ---------- */
 const lang = (t) => (t.locale ?? "").toUpperCase();
 const fmtTarget = (ms) => ms >= 3_600_000 ? `${+(ms / 3_600_000).toFixed(1)} h` : `${Math.round(ms / 60_000)} min`;
 
@@ -266,12 +288,12 @@ function renderKpis() {
 function filterBar(list) {
   const tickets = state.tickets;
   const chips = [];
-  // key = clé de l'état ; « tag » est partagé avec la barre latérale.
+  // key = state key; "tag" is shared with the sidebar.
   const chip = (key, label, shown, items) => dropdown("f-" + key, [state[key] ? `${label}: ${shown}` : label, h("span", { class: "chev" }, icon("chev", 14))],
     [{ label: "Any", checked: !state[key], onpick: () => { state[key] = ""; state.animate = true; render(); } },
       ...items.map(([v, l, c]) => ({ label: l, checked: state[key] === v, lead: c ? h("span", { class: "sq", style: `--c:${c}` }) : null, onpick: () => { state[key] = v; state.animate = true; render(); } }))],
     { cls: "chip" + (state[key] ? " set" : ""), label });
-  if (tickets.some((t) => hasField(t, "priority"))) chips.push(chip("fPriority", "Priority", PRIORITIES.find((p) => p[0] === state.fPriority)?.[1], PRIORITIES));
+  chips.push(chip("fPriority", "Priority", PRIORITIES.find((p) => p[0] === state.fPriority)?.[1], PRIORITIES));
   const tg = tagList();
   if (tg.length) chips.push(chip("tag", "Tag", "#" + state.tag, tg.map((g) => [g.name, "# " + g.name])));
   const names = [...new Set(tickets.map((t) => t.assignee).filter(Boolean))].sort();
@@ -349,7 +371,7 @@ function renderInbox() {
     h("section", { class: "panel list", "aria-label": "Tickets", "aria-busy": String(state.loading) }, body));
 }
 
-/* ---------- Texte des messages : liens cliquables, images affichées (DOM, jamais innerHTML) ---------- */
+/* ---------- Message text: clickable links, inline images (DOM only, never innerHTML) ---------- */
 const TOKEN_RE = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|https?:\/\/[^\s<>"']+/g;
 const IMG_EXT = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
 function isImage(url) {
@@ -359,7 +381,7 @@ function isImage(url) {
 const stickBottom = (img) => img.addEventListener("load", () => { const m = img.closest(".msgs"); if (m?.dataset.stick) m.scrollTop = m.scrollHeight; });
 function imageLink(url, img, cap) {
   const a = h("a", { class: "att", href: url, target: "_blank", rel: "noopener noreferrer", title: "Open the image" }, img, cap);
-  // Clic simple : visionneuse du panel. Ctrl/Cmd/clic milieu gardent l'ouverture dans un onglet.
+  // Plain click opens the panel viewer. Ctrl/Cmd/middle click keep opening a tab.
   a.addEventListener("click", (e) => { if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openLightbox(url); });
   img.addEventListener("error", () => { a.classList.add("broken"); a.removeAttribute("href"); a.replaceChildren("Image unavailable" + (cap ? "" : " (link expired)")); });
   stickBottom(img);
@@ -393,7 +415,7 @@ function attachmentEl(a) {
     h("a", { class: "btn sm ghost", href: a.url, download: a.name }, icon("download", 14), "Download"));
 }
 
-/* ---------- Visionneuse (posée sur <body>, intacte quand le panel se redessine) ---------- */
+/* ---------- Viewer (mounted on <body>, untouched when the panel re-renders) ---------- */
 let lb = null;
 function openLightbox(url) {
   closeLightbox(true);
@@ -453,21 +475,18 @@ function messageEl(m, t, fresh) {
     h("div", { class: "who" }, h("b", {}, m.authorName), lang(t) ? h("span", { class: "mono" }, lang(t)) : null, h("span", { class: "mono" }, clock(m.createdAt))), bubble));
 }
 
-const caps = (d) => ({
-  notes: d.messages.some((m) => m.internal !== undefined) || d.ticket.priority !== undefined,
-  replies: Array.isArray(state.replies) && state.replies.length > 0,
-});
+const caps = () => ({ notes: true, replies: true });
 
 function getComposer(d) {
   let c = composers.get(d.ticket.id);
   if (!c) {
     c = createComposer({
-      ticket: d.ticket, me: state.me, caps: caps(d),
-      getReplies: async () => state.replies,
+      ticket: d.ticket, me: state.me, caps: caps(),
+      getReplies: async () => state.replies ?? [], manageReplies: () => manageReplies(),
       onSent: (_res, mode) => { if (mode === "note") toast("Note added.", true); const m = document.querySelector(".msgs"); if (m) m.dataset.stick = "1"; refresh(true); },
     });
     composers.set(d.ticket.id, c);
-  } else c.update({ ticket: d.ticket, me: state.me, caps: caps(d) });
+  } else c.update({ ticket: d.ticket, me: state.me, caps: caps() });
   return c;
 }
 
@@ -482,12 +501,6 @@ const act = (label, path, cls, run) => {
 };
 
 async function closeFlow(t) {
-  // Avec un serveur qui gère motif et note de clôture, on les demande ; sinon simple confirmation.
-  if (!hasField(t, "closeReason")) {
-    if (!(await confirmDialog("Close this ticket?", `${t.userName} will not be able to write in the channel anymore.`, "Close ticket"))) return;
-    try { await post(`/tickets/${t.id}/close`); await refresh(true); } catch (e) { if (e.message !== "auth") toast(e.message); }
-    return;
-  }
   const r = await modal((done) => {
     const msg = h("textarea", { id: "cl-msg", rows: "3", placeholder: "Leave empty to send the default closing message." });
     const rating = h("input", { type: "checkbox", id: "cl-rate" }), tr = h("input", { type: "checkbox", id: "cl-tr" });
@@ -526,22 +539,112 @@ async function tagDialog(t) {
   if (name && !t.tags.includes(name)) await mutate(`/tickets/${t.id}/tags`, { tags: [...t.tags, name] });
 }
 
-/* Contrôles de la vague 2 : affichés seulement si le serveur envoie le champ. */
+/* Assignment and priority controls. */
 function assigneeControl(t, cls) {
-  if (t.assigneeId === undefined) return null;
   const me = state.me?.name;
+  const others = [...new Set(state.tickets.map((x) => x.assignee).filter((n) => n && n !== me))].sort();
   return dropdown("assign", [avatarFor(t.assignee ?? "?", !!t.assignee, 20), t.assignee ?? "Unassigned", h("span", { class: "chev" }, icon("chev", 12))], [
     { heading: "Assignee" },
     ...(me ? [{ label: `Assign to me (${me})`, checked: t.assignee === me, onpick: () => setAssignee(t, me) }] : []),
+    ...others.map((n) => ({ label: n, checked: t.assignee === n, onpick: () => setAssignee(t, n) })),
     { label: "Unassigned", checked: !t.assignee, onpick: () => setAssignee(t, null) },
   ], { cls: "sel " + cls, label: "Assignee" });
 }
 function priorityControl(t, cls) {
-  if (t.priority === undefined) return null;
   const p = PRIORITIES.find((x) => x[0] === t.priority) ?? PRIORITIES[2];
   return dropdown("prio", [h("span", { class: "sq", style: `--c:${p[2]}` }), p[1], h("span", { class: "chev" }, icon("chev", 12))],
     [{ heading: "Priority" }, ...PRIORITIES.map(([v, l, c]) => ({ label: l, lead: h("span", { class: "sq", style: `--c:${c}` }), checked: t.priority === v, onpick: () => mutate(`/tickets/${t.id}/priority`, { priority: v }) }))],
     { cls: "sel " + cls, label: "Priority" });
+}
+
+const ACTIONS = {
+  assign: "Assigned", priority: "Priority changed", tags: "Tags changed", close: "Closed", reopen: "Reopened",
+  delete: "Channel deleted", note: "Note added", reply: "Reply sent", rating: "Rated",
+};
+function activitySection() {
+  const entries = [...state.audit].sort((a, b) => b.at - a.at);
+  if (!entries.length) return null;
+  const shown = state.auditAll ? entries : entries.slice(0, 6);
+  return h("div", { class: "sec" }, h("div", { class: "eyebrow" }, `Activity · ${entries.length}`),
+    h("ol", { class: "audit", "aria-label": "Activity log" }, shown.map((e) =>
+      h("li", {}, h("span", { class: "sq", "aria-hidden": "true" }),
+        h("div", { class: "what" }, h("b", {}, ACTIONS[e.action] ?? e.action.replaceAll("_", " ")), e.detail ? h("span", { class: "truncate" }, plain(e.detail)) : null),
+        h("span", { class: "small mono", title: new Date(e.at).toLocaleString("en-GB") }, `${e.actor} · ${ago(e.at)}`)))),
+    entries.length > 6 ? h("button", { class: "btn sm ghost", type: "button", style: "align-self:flex-start", onclick: () => { state.auditAll = !state.auditAll; renderContent(); } }, state.auditAll ? "Show less" : `Show all ${entries.length}`) : null);
+}
+
+/* Saved replies manager: list, add or update (upsert by name), delete. */
+async function manageReplies() {
+  const reload = async () => { repliesFor = null; await loadReplies(); };
+  await modal((done) => {
+    const list = h("div", { class: "checks" });
+    const name = h("input", { id: "sr-name", type: "text", maxlength: "32", autocomplete: "off", class: "mono", style: "font-size:13px", placeholder: "refund-policy", "data-autofocus": "" });
+    const text = h("textarea", { id: "sr-text", rows: "3", placeholder: "Hi {customer}, ..." });
+    const err = h("div", { class: "err", role: "alert", style: "min-height:0" });
+    const draw = () => list.replaceChildren(...((state.replies ?? []).length ? state.replies.map((r) =>
+      h("div", { class: "kv", style: "align-items:flex-start;gap:12px" },
+        h("div", { style: "min-width:0;display:flex;flex-direction:column;gap:2px" }, h("span", { class: "cmd mono" }, "/" + r.name), h("span", { class: "small", style: "white-space:pre-wrap" }, r.text)),
+        h("span", { style: "display:flex;gap:6px;flex:none" },
+          h("button", { class: "btn sm ghost", type: "button", "aria-label": `Edit ${r.name}`, onclick: () => { name.value = r.name; text.value = r.text; text.focus(); } }, "Edit"),
+          h("button", { class: "btn sm caution", type: "button", "aria-label": `Delete ${r.name}`, onclick: async () => {
+            try { await api("/replies/" + r.id, { method: "DELETE" }); await reload(); draw(); } catch (e) { if (e.message !== "auth") err.textContent = e.message; }
+          } }, "Delete"))))
+      : [h("p", { class: "small" }, "No saved replies yet.")]));
+    draw();
+    return h("form", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": "Saved replies", style: "width:min(560px,92vw)", onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      const n = name.value.trim().toLowerCase().replace(/^\//, "");
+      if (!/^[a-z0-9-]{1,32}$/.test(n)) { err.textContent = "Name: 1 to 32 letters, digits or dashes."; return; }
+      if (!text.value.trim()) { err.textContent = "Write the reply text."; return; }
+      try { await post("/replies", { guild: state.guild, name: n, text: text.value.trim() }); await reload(); name.value = ""; text.value = ""; draw(); toast("Saved reply stored.", true); }
+      catch (x) { if (x.message !== "auth") err.textContent = x.message; }
+    } },
+      h("h3", {}, "Saved replies"), h("p", {}, "Type / in a reply to insert one. {customer} becomes the customer's name."), list,
+      h("div", { class: "fld" }, h("label", { for: "sr-name" }, "Name"), name),
+      h("div", { class: "fld" }, h("label", { for: "sr-text" }, "Text"), text), err,
+      h("div", { class: "actions" }, h("button", { class: "btn ghost sm", type: "button", onclick: () => done(null) }, "Done"), h("button", { class: "btn hero sm", type: "submit" }, "Save reply")));
+  });
+}
+
+/* ---------- Metrics view ---------- */
+function targetBar(label, value, target) {
+  const pct = value == null ? 0 : Math.min(100, Math.round((value / target) * 100));
+  return h("div", { class: "panel mbar" },
+    h("div", { class: "kv" }, h("span", {}, label), h("span", { class: "mono", style: "font-weight:700" }, value == null ? "No data" : dur(value))),
+    h("div", { class: "pixel-bar", role: "img", "aria-label": value == null ? `${label}: no data` : `${label}: ${dur(value)} of ${fmtTarget(target)} allowed` }, h("i", { style: `width:${pct}%` })),
+    h("span", { class: "small" }, `Target ${fmtTarget(target)}${value == null ? "" : value <= target ? " · met" : " · missed"}`));
+}
+
+function renderMetrics() {
+  const m = state.metrics;
+  const d = state.metricsDays;
+  const days = dropdown("days", [`Last ${d} days`, h("span", { class: "chev" }, icon("chev", 14))],
+    [7, 30, 90].map((n) => ({ label: `Last ${n} days`, checked: d === n, onpick: () => { state.metricsDays = n; state.metrics = null; loadMetrics(true).then(render); render(); } })), { cls: "chip", label: "Period", right: true });
+  let body;
+  if (!m) body = [h("div", { class: "kpis" }, [1, 2, 3, 4].map(() => h("div", { class: "skel" })))];
+  else {
+    const tg = m.targets ?? DEFAULT_TARGETS;
+    const o = m.oldestWaiting;
+    body = [
+      h("div", { class: "kpis" },
+        kpiTile("Waiting now", String(m.waitingNow), "Customers waiting on us", { key: "m-wait" }),
+        kpiTile("Oldest waiting", o ? dur(o.ms) : "None", o ? `${o.userName} · ${o.subject}` : "Nobody is waiting", { late: !!o && o.ms > tg.replyMs, key: "m-old" }),
+        kpiTile("Resolved today", String(m.resolvedToday), "Tickets closed since midnight", { key: "m-res" }),
+        kpiTile("Satisfaction", m.satisfactionAvg != null ? `${m.satisfactionAvg.toFixed(1)} / 5` : "No ratings", `${m.satisfactionCount} rating${m.satisfactionCount === 1 ? "" : "s"} · last ${d} days`, { key: "m-sat" })),
+      h("div", { class: "mgrid" },
+        targetBar(`First reply, median (${d} days)`, m.firstReplyMedianMs, tg.firstReplyMs),
+        h("div", { class: "panel mbar" },
+          h("div", { class: "kv" }, h("span", {}, `Time to resolution, median (${d} days)`), h("span", { class: "mono", style: "font-weight:700" }, m.resolutionMedianMs == null ? "No data" : dur(m.resolutionMedianMs))),
+          h("span", { class: "small" }, "From the ticket opening to its closing.")),
+        o ? h("a", { class: "panel mbar link", href: "#/t/" + o.ticketId },
+          h("span", { class: "eyebrow" }, "Longest wait"), h("span", { style: "font-weight:600" }, `#${o.ticketId} ${o.subject}`), h("span", { class: "small" }, `${o.userName} has waited ${dur(o.ms)}. Open the ticket.`)) : null)];
+  }
+  return h("main", { class: "inbox", id: "content" },
+    h("div", { class: "head" + (state.intro ? " rise" : "") },
+      h("div", { class: "t" }, h("span", { class: "eyebrow", style: "color:var(--accent-ink)" }, "Reports"), h("h1", { class: "display" }, "Metrics")),
+      h("div", { class: "tools" }, days)),
+    body);
 }
 
 function renderAside(d) {
@@ -558,17 +661,17 @@ function renderAside(d) {
   const det = [
     h("div", { class: "eyebrow" }, "Details"),
     h("div", { class: "kv" }, h("span", {}, "Status"), h("span", { class: "v" }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label)),
-    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, assigneeControl(t, "") ?? (t.assignee ? t.assignee : h("span", { class: "small" }, "Unassigned")))),
+    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, assigneeControl(t, ""))),
   ];
-  if (t.priority !== undefined) det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, priorityControl(t, ""))));
-  if (Array.isArray(t.tags)) det.push(h("div", { class: "kv", style: "align-items:flex-start" }, h("span", {}, "Tags"), h("span", { class: "v" },
+  det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, priorityControl(t, ""))));
+  det.push(h("div", { class: "kv", style: "align-items:flex-start" }, h("span", {}, "Tags"), h("span", { class: "v" },
     t.tags.map((g) => h("span", { class: "badge" }, "# " + g, h("button", { type: "button", "aria-label": `Remove tag ${g}`, style: "background:none;border:0;padding:0;margin-left:2px;display:grid;color:var(--muted)", onclick: () => mutate(`/tickets/${t.id}/tags`, { tags: t.tags.filter((x) => x !== g) }) }, icon("x", 12)))),
     t.tags.length < 8 ? h("button", { class: "btn sm ghost", type: "button", "aria-label": "Add a tag", style: "height:24px;padding:0 8px", onclick: () => tagDialog(t) }, icon("plus", 12)) : null)));
   if (t.closeReason) det.push(h("div", { class: "kv" }, h("span", {}, "Closed as"), h("span", { class: "v" }, REASONS.find((r) => r[0] === t.closeReason)?.[1] ?? t.closeReason)));
   if (t.rating) det.push(h("div", { class: "kv" }, h("span", {}, "Rating"), h("span", { class: "v mono" }, `${t.rating} / 5`)));
   det.push(h("div", { class: "kv" }, h("span", {}, "Server"), h("span", { class: "v" }, state.guilds.find((g) => g.id === t.guildId)?.name ?? "")));
   sections.push(h("div", { class: "sec" }, det));
-  if (t.firstResponseAt !== undefined) {
+  {
     const first = t.firstResponseAt ? t.firstResponseAt - t.createdAt : null;
     const pct = first == null ? 0 : Math.min(100, Math.round((first / tg.firstReplyMs) * 100));
     const left = t.awaiting === "support" && isOpen(t) ? tg.replyMs - (now - since(t)) : null;
@@ -580,6 +683,7 @@ function renderAside(d) {
       h("div", { class: "kv" }, h("span", {}, "Open for"), h("span", { class: "mono", style: "font-weight:700" }, dur((t.closedAt ?? now) - t.createdAt))),
       left != null ? h("div", { class: "kv" }, h("span", {}, "Next reply due"), h("span", { class: "mono" + (left < 0 ? "" : ""), style: "font-weight:700" + (left < 0 ? ";color:var(--danger-ink)" : "") }, left < 0 ? `${dur(-left)} overdue` : `in ${dur(left)}`)) : null));
   }
+  sections.push(activitySection());
   if (atts.length) sections.push(h("div", { class: "sec" }, h("div", { class: "eyebrow" }, `Attachments · ${atts.length}`),
     h("div", { class: "thumbs" }, atts.map((a) => a.kind === "image"
       ? h("a", { class: "thumb", href: a.url, "data-img": a.url, title: a.name, onclick: (e) => { e.preventDefault(); openLightbox(a.url); } }, h("img", { src: a.url, alt: a.name, loading: "lazy" }))
@@ -598,7 +702,7 @@ function renderTicket() {
   state.seen = { id: t.id, max: lastId };
   const msgs = h("div", { class: "msgs", role: "log", "aria-label": "Conversation", "aria-live": "polite" },
     d.messages.map((m) => messageEl(m, t, m.id > seen)));
-  // On suit le bas de la conversation, sauf si l'admin relit plus haut dans le même ticket.
+  // Stick to the bottom of the conversation unless the agent scrolled up in the same ticket.
   const old = document.querySelector(".msgs");
   const atBottom = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 80;
   const keep = state.shown === t.id && !atBottom ? old.scrollTop : null;
@@ -620,18 +724,18 @@ function renderTicket() {
     h("div", { class: "cols" }, h("section", { class: "convo", "aria-label": "Conversation" }, msgs, c.el, c.overlay), renderAside(d)));
 }
 
-/* ---------- Rendu ---------- */
+/* ---------- Render ---------- */
 function renderContent() {
   const typing = document.activeElement?.id === "reply" ? document.activeElement : null;
   const sel = typing ? [typing.selectionStart, typing.selectionEnd] : null;
   shell.root.dataset.mode = state.detail ? "ticket" : "inbox";
-  const node = state.detail ? renderTicket() : renderInbox();
+  const node = state.detail ? renderTicket() : state.view === "metrics" && !state.query.trim() ? renderMetrics() : renderInbox();
   shell.main.replaceChildren(node);
   if (typing && typing.isConnected && !typing.disabled) { typing.focus({ preventScroll: true }); typing.setSelectionRange(...sel); }
   state.slide = false;
 }
 
-const signature = () => JSON.stringify([state.tickets, state.detail, state.guilds, state.metrics, state.online, state.replies?.length, state.loading]);
+const signature = () => JSON.stringify([state.tickets, state.detail, state.guilds, state.metrics, state.audit, state.online, state.replies?.length, state.loading]);
 
 function render() {
   lastSig = signature();
@@ -642,7 +746,7 @@ function render() {
   state.animate = false; state.intro = false;
 }
 
-/* ---------- Connexion ---------- */
+/* ---------- Sign in ---------- */
 async function renderLogin(error = "") {
   shell = null; composers.clear(); closeLightbox(true);
   const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({ oauth: false }));
@@ -669,7 +773,7 @@ async function renderLogin(error = "") {
   input.focus();
 }
 
-/* ---------- Navigation : un ticket = une page plein écran (#/t/12) ---------- */
+/* ---------- Navigation: a ticket is a full-screen page (#/t/12) ---------- */
 const hashId = () => Number(/^#\/t\/(\d+)$/.exec(location.hash)?.[1]) || null;
 function closeTicket() {
   if (!location.hash || location.hash === "#") return syncFromHash();
@@ -683,7 +787,7 @@ async function syncFromHash() {
   state.selected = id; state.slide = true;
   try {
     const d = await api("/tickets/" + id);
-    // Lien vers un ticket d'un autre serveur : on bascule dessus (si accessible).
+    // Link to a ticket on another server: switch to it (if accessible).
     if (d.ticket.guildId !== state.guild && state.guilds.some((g) => g.id === d.ticket.guildId)) {
       state.guild = d.ticket.guildId; store.set("guild", state.guild);
       state.detail = d; await load();
@@ -695,7 +799,7 @@ async function syncFromHash() {
     return render();
   }
   render();
-  // On arrive dans la zone de réponse (grand écran seulement, pour ne pas ouvrir le clavier mobile).
+  // Land in the reply box (large screens only, so the mobile keyboard stays closed).
   if (matchMedia("(min-width:901px)").matches) composers.get(id)?.focus({ preventScroll: true });
 }
 addEventListener("hashchange", syncFromHash);
@@ -706,7 +810,7 @@ async function switchGuild(id) {
   state.selected = null; state.detail = null; state.query = ""; shell.input.value = "";
   state.tag = state.fPriority = state.fAssignee = state.fLang = ""; state.sort = null; state.view = "waiting-us";
   if (location.hash) history.replaceState(null, "", location.pathname);
-  composers.clear(); state.tickets = []; state.tags = null; state.metrics = null; state.replies = null; repliesFor = null; metricsAt = 0; noMetrics = false;
+  composers.clear(); state.tickets = []; state.tags = null; state.metrics = null; state.replies = null; repliesFor = null; metricsAt = 0; metricsKey = "";
   state.loading = true; state.animate = state.intro = true;
   render();
   try { await load(); } catch (e) { if (e.message !== "auth") toast(e.message); }
@@ -726,7 +830,7 @@ async function refresh(force = false) {
     await load();
     state.online = true;
     notifyChanged();
-    // Un menu ouvert garde le focus : on diffère le rendu jusqu'à sa fermeture.
+    // An open menu keeps focus: defer rendering until it closes.
     if (state.pop && !force) { state.dirty = true; return; }
     if (!force && signature() === lastSig) return;
     render();
@@ -738,7 +842,7 @@ async function refresh(force = false) {
   }
 }
 
-/* ---------- Temps réel (SSE) ---------- */
+/* ---------- Live updates (SSE) ---------- */
 let events = null, eventsGuild = null, pending = null, slow = 0;
 function connectEvents() {
   if (events && events.readyState !== 2 && eventsGuild === state.guild) return;
@@ -751,7 +855,7 @@ function connectEvents() {
   es.onerror = () => { state.online = false; renderHeader(); };
 }
 
-/* ---------- Glisser-déposer et collage ---------- */
+/* ---------- Drag and drop, paste ---------- */
 const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
 const activeComposer = () => (state.detail ? composers.get(state.detail.ticket.id) : null);
 let depth = 0;
@@ -777,7 +881,7 @@ document.addEventListener("paste", (e) => {
   if (files.length) { e.preventDefault(); c.addFiles(files); }
 });
 
-/* ---------- Clavier ---------- */
+/* ---------- Keyboard ---------- */
 document.addEventListener("click", () => { if (state.pop) { state.pop = null; render(); } });
 document.addEventListener("keydown", (e) => {
   if (lb) {
@@ -788,7 +892,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape" && !document.querySelector(".scrim") && !state.pop && state.selected) {
-    // Dans le champ de réponse, un premier Échap sort du champ (le brouillon est conservé) ; le second revient à la liste.
+    // In the reply box, the first Escape leaves the field (the draft is kept); the second returns to the list.
     if (document.activeElement?.tagName === "TEXTAREA") document.activeElement.blur(); else closeTicket();
     return;
   }
@@ -796,7 +900,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "") && !state.detail) { e.preventDefault(); shell?.input.focus(); }
 });
 
-/* ---------- Démarrage ---------- */
+/* ---------- Start ---------- */
 onAuthLost(() => renderLogin());
 
 async function start() {
@@ -809,7 +913,7 @@ async function start() {
   if (hashId()) await syncFromHash();
 }
 
-// Minuteurs : le temps d'attente avance sans rien recharger.
+// Timers: waiting times advance without reloading.
 setInterval(() => {
   const now = Date.now();
   document.querySelectorAll(".timer[data-since]").forEach((el) => {
@@ -818,7 +922,7 @@ setInterval(() => {
     if (el.dataset.target) el.classList.toggle("late", ms > Number(el.dataset.target));
   });
 }, 30_000);
-// Filet de sécurité : le flux temps réel fait l'essentiel, ceci rattrape une coupure.
+// Safety net: the live stream does most of the work, this catches a dropped connection.
 setInterval(() => {
   if (!shell) return;
   if (events && events.readyState === 1) { if (++slow % 6 === 0) refresh(); } else { connectEvents(); refresh(); }
