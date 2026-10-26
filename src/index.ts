@@ -31,6 +31,6 @@ if (cfg.oauthClientSecret) {
   console.log(`Redirection à déclarer dans le portail Discord : ${cfg.redirectUri}`);
 }
 
-Bun.serve({ port: cfg.port, fetch: createHandler(desk, cfg, oauth, { list: () => real?.list() ?? [] }) });
+Bun.serve({ port: cfg.port, idleTimeout: 60, fetch: createHandler(desk, cfg, oauth, { list: () => real?.list() ?? [] }) });
 console.log(`Panel admin : http://localhost:${cfg.port}`);
 if (!oauth && cfg.passwordGenerated) console.log(`Mot de passe du panel (généré) : ${cfg.panelPassword}`);

@@ -10,6 +10,7 @@ export interface Ticket {
   userName: string;
   channelId: string;
   subject: string;
+  description: string;
   status: Status;
   assignee: string | null;
   createdAt: number;
@@ -29,6 +30,13 @@ export interface TicketMessage {
 
 export class TicketError extends Error {}
 
+/** Changement notifié aux abonnés (flux temps réel du panel). */
+export interface TicketEvent {
+  type: "ticket" | "message";
+  ticketId: number;
+  guildId: string;
+}
+
 interface Row {
   id: number;
   guild_id: string;
@@ -36,6 +44,7 @@ interface Row {
   user_name: string;
   channel_id: string;
   subject: string;
+  description: string;
   status: Status;
   assignee: string | null;
   created_at: number;
@@ -50,6 +59,7 @@ const toTicket = (r: Row): Ticket => ({
   userName: r.user_name,
   channelId: r.channel_id,
   subject: r.subject,
+  description: r.description,
   status: r.status,
   assignee: r.assignee,
   createdAt: r.created_at,
@@ -58,10 +68,34 @@ const toTicket = (r: Row): Ticket => ({
 });
 
 export class TicketService {
+  private listeners = new Set<(e: TicketEvent) => void>();
+
   constructor(private db: Database) {}
 
+  /** S'abonne aux changements ; renvoie la fonction de désabonnement. */
+  subscribe(fn: (e: TicketEvent) => void): () => void {
+    this.listeners.add(fn);
+    return () => void this.listeners.delete(fn);
+  }
+
+  listenerCount(): number {
+    return this.listeners.size;
+  }
+
+  private emit(type: TicketEvent["type"], ticketId: number): void {
+    const t = this.get(ticketId);
+    if (!t) return;
+    for (const fn of [...this.listeners]) {
+      try {
+        fn({ type, ticketId, guildId: t.guildId });
+      } catch (e) {
+        console.error("Abonné d'événements en erreur", e);
+      }
+    }
+  }
+
   create(
-    input: { guildId: string; userId: string; userName: string; channelId: string; subject: string },
+    input: { guildId: string; userId: string; userName: string; channelId: string; subject: string; description?: string },
     opts: { maxActivePerUser?: number } = {},
   ): Ticket {
     if (opts.maxActivePerUser !== undefined) {
@@ -76,10 +110,11 @@ export class TicketService {
     }
     const now = Date.now();
     const r = this.db
-      .query<{ id: number }, [string, string, string, string, string, number, number]>(
-        "INSERT INTO tickets (guild_id,user_id,user_name,channel_id,subject,created_at,updated_at) VALUES (?,?,?,?,?,?,?) RETURNING id",
+      .query<{ id: number }, [string, string, string, string, string, string, number, number]>(
+        "INSERT INTO tickets (guild_id,user_id,user_name,channel_id,subject,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) RETURNING id",
       )
-      .get(input.guildId, input.userId, input.userName, input.channelId, input.subject, now, now)!;
+      .get(input.guildId, input.userId, input.userName, input.channelId, input.subject, input.description ?? "", now, now)!;
+    this.emit("ticket", r.id);
     return this.require(r.id);
   }
 
@@ -151,9 +186,13 @@ export class TicketService {
     ticketId: number,
     m: { authorId: string; authorName: string; content: string; source: Source },
   ): void {
+    const now = Date.now();
     this.db
       .query("INSERT INTO messages (ticket_id,author_id,author_name,content,source,created_at) VALUES (?,?,?,?,?,?)")
-      .run(ticketId, m.authorId, m.authorName, m.content, m.source, Date.now());
+      .run(ticketId, m.authorId, m.authorName, m.content, m.source, now);
+    // Un message fait remonter le ticket dans la liste du panel.
+    this.db.query("UPDATE tickets SET updated_at = MAX(updated_at + 1, ?) WHERE id = ?").run(now, ticketId);
+    this.emit("message", ticketId);
   }
 
   messages(ticketId: number): TicketMessage[] {
@@ -192,6 +231,7 @@ export class TicketService {
     this.db
       .query("UPDATE tickets SET status = ?, assignee = ?, closed_at = ?, updated_at = ? WHERE id = ?")
       .run(status, assignee, closedAt, Date.now(), id);
+    this.emit("ticket", id);
     return this.require(id);
   }
 }

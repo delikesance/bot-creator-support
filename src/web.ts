@@ -63,6 +63,8 @@ const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
+const HEARTBEAT_MS = 15_000;
+
 export function createHandler(
   desk: SupportDesk,
   cfg: WebConfig,
@@ -193,6 +195,37 @@ export function createHandler(
 
     /** Un serveur accessible à la session, ou null. */
     const canAccess = (guildId: string) => accessible(session).some((g) => g.id === guildId);
+
+    if (path === "/api/events" && req.method === "GET") {
+      const guildId = url.searchParams.get("guild") ?? "";
+      if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
+      const enc = new TextEncoder();
+      let off = () => {};
+      let beat: ReturnType<typeof setInterval> | undefined;
+      const stream = new ReadableStream<Uint8Array>({
+        start(ctrl) {
+          const write = (s: string) => {
+            try {
+              ctrl.enqueue(enc.encode(s));
+            } catch {
+              off();
+            }
+          };
+          write("retry: 3000\n: connected\n\n");
+          off = desk.tickets.subscribe((e) => {
+            if (e.guildId === guildId) write(`data: ${JSON.stringify(e)}\n\n`);
+          });
+          beat = setInterval(() => write(": ping\n\n"), HEARTBEAT_MS);
+        },
+        cancel() {
+          off();
+          clearInterval(beat);
+        },
+      });
+      return new Response(stream, {
+        headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" },
+      });
+    }
 
     try {
       if (path === "/api/tickets" && req.method === "GET") {

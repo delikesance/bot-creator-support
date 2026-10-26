@@ -47,5 +47,19 @@ const fakeOAuth: OAuthProvider = {
   isAdmin: () => true,
 };
 const oauth = process.argv.includes("oauth") ? fakeOAuth : undefined;
-Bun.serve({ port: 3200, fetch: createHandler(desk, { panelPassword: "demo", sessionSecret: "d".repeat(32) }, oauth, directory) });
+const handle = createHandler(desk, { panelPassword: "demo", sessionSecret: "d".repeat(32) }, oauth, directory);
+// Simule un message de l'utilisateur sur Discord : GET /demo/say?id=1&text=Bonjour
+Bun.serve({
+  port: 3200,
+  idleTimeout: 60,
+  fetch: (req) => {
+    const u = new URL(req.url);
+    if (u.pathname === "/demo/say") {
+      const t = desk.tickets.get(Number(u.searchParams.get("id")));
+      if (t) desk.recordDiscordMessage(t.channelId, { id: t.userId, name: t.userName }, u.searchParams.get("text") ?? "…");
+      return new Response("ok");
+    }
+    return handle(req);
+  },
+});
 console.log("Démo sur http://localhost:3200 (mot de passe : demo)");

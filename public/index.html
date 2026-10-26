@@ -66,6 +66,7 @@
   .opt[aria-checked="true"] { background:var(--accent-deep); box-shadow:inset 3px 0 0 var(--accent); }
   .opt .gname { flex:1; font-weight:600; }
   .opt small { color:var(--muted); font-size:12px; }
+  .msg.fresh { animation:rise .28s var(--ease) both; }
   .spacer { flex:1; }
 
   .btn { height:36px; padding:0 16px; background:var(--raised); border:1px solid var(--border); border-radius:2px; font-weight:600; font-size:14px; transition:transform .12s, box-shadow .12s, border-color .15s, background .15s; white-space:nowrap; }
@@ -308,7 +309,7 @@ function visibleTickets() {
   const q = state.query.trim().toLowerCase();
   return state.tickets.filter((t) =>
     (!state.filter || t.status === state.filter) &&
-    (!q || `${t.id} ${t.subject} ${t.userName} ${t.assignee ?? ""}`.toLowerCase().includes(q)));
+    (!q || `${t.id} ${t.subject} ${t.description ?? ""} ${t.userName} ${t.assignee ?? ""}`.toLowerCase().includes(q)));
 }
 
 /* ---------- Écran principal ---------- */
@@ -367,12 +368,23 @@ function renderDetail() {
   if (t.status !== "closed") buttons.push(act("Fermer le ticket", "close", "caution"));
   if (t.status === "closed") buttons.push(act("Rouvrir", "reopen", "hero"), act("Supprimer le salon", "delete", "caution"));
 
+  // Messages arrivés depuis le dernier rendu du même ticket : mis en évidence.
+  const lastId = d.messages.at(-1)?.id ?? 0;
+  const seen = state.seen?.id === t.id ? state.seen.max : lastId;
+  state.seen = { id: t.id, max: lastId };
   const msgs = h("div", { class:"msgs", "aria-live":"polite" }, d.messages.map((m) => {
     const text = m.content.replaceAll("**", "").replace(/^\p{Extended_Pictographic}️?\s*/u, "");
-    if (m.source === "system") return h("div", { class:"msg system" }, h("span", { class:"sq", style:`--c:${s.color}` }), text);
-    return h("div", { class:"msg " + m.source }, h("div", { class:"who" }, `${m.authorName} · ${clock(m.createdAt)}`), h("div", { class:"body" }, text));
+    const fresh = m.id > seen ? " fresh" : "";
+    if (m.source === "system") return h("div", { class:"msg system" + fresh }, h("span", { class:"sq", style:`--c:${s.color}` }), text);
+    return h("div", { class:"msg " + m.source + fresh }, h("div", { class:"who" }, `${m.authorName} · ${clock(m.createdAt)}`), h("div", { class:"body" }, text));
   }));
-  requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+  // On suit le bas de la conversation, sauf si l'admin relit plus haut dans le même ticket.
+  const old = document.querySelector(".msgs");
+  const sameTicket = state.shown === t.id;
+  const atBottom = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 80;
+  const keep = sameTicket && !atBottom ? old.scrollTop : null;
+  state.shown = t.id;
+  requestAnimationFrame(() => { msgs.scrollTop = keep ?? msgs.scrollHeight; });
 
   const closed = t.status === "closed";
   const ta = h("textarea", { id:"reply", rows:"1", disabled:closed, "aria-label":"Réponse",
@@ -432,6 +444,7 @@ async function switchGuild(id) {
   try { await load(); } catch (e) { if (e.message !== "auth") toast(e.message); }
   state.loading = false; state.animate = true;
   renderMain();
+  connectEvents();
 }
 
 function guildIcon(g) {
@@ -479,6 +492,19 @@ async function refresh(force = false) {
   }
 }
 
+/* ---------- Temps réel (SSE) ---------- */
+let events = null, eventsGuild = null, pending = null, slow = 0;
+function connectEvents() {
+  if (events && events.readyState !== 2 && eventsGuild === state.guild) return;
+  events?.close(); events = null;
+  if (!state.guild || typeof EventSource === "undefined") return;
+  eventsGuild = state.guild;
+  const es = events = new EventSource("/api/events?guild=" + encodeURIComponent(state.guild));
+  es.onmessage = () => { clearTimeout(pending); pending = setTimeout(() => refresh(), 120); };
+  es.onopen = () => { state.online = true; refresh(); };
+  es.onerror = () => { state.online = false; document.querySelector(".live")?.classList.add("off"); };
+}
+
 document.addEventListener("click", () => { if (state.menu) { state.menu = false; renderMain(); } });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.menu) { state.menu = false; renderMain(); document.getElementById("guild-btn")?.focus(); }
@@ -488,7 +514,12 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   renderMain();
   try { await load(); state.loading = false; state.animate = true; renderMain(); } catch (e) { if (e.message !== "auth") { state.loading = false; renderMain(); } }
-  setInterval(() => { if (document.getElementById("q")) refresh(); }, 5000);
+  connectEvents();
+  // Filet de sécurité : le flux temps réel fait l'essentiel, ceci rattrape une coupure.
+  setInterval(() => {
+    if (!document.getElementById("q")) return;
+    if (events && events.readyState === 1) { if (++slow % 6 === 0) refresh(); } else { connectEvents(); refresh(); }
+  }, 5000);
 })();
 </script>
 </body>
