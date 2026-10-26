@@ -99,6 +99,14 @@
   .sq { width:8px; height:8px; background:var(--c); display:inline-block; flex:none; }
   .lbl { display:flex; align-items:center; gap:8px; }
 
+  main.focus { max-width:1040px; height:calc(100vh - 64px); padding:20px 32px 24px; gap:0; }
+  main.focus .detail { position:static; max-height:none; flex:1 1 0; min-height:0; width:100%; }
+  main.focus .msgs { min-height:0; }
+  .layout > .list { flex:1 1 100%; }
+  .dh .toprow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .dh .toprow .actions { margin-left:auto; }
+  .back { height:36px; }
+  @media (max-width:900px) { main.focus { padding:12px 12px 16px; height:calc(100dvh - 64px); } }
   .layout { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
   .panel { background:var(--surface); border:1px solid var(--border); border-radius:2px; min-width:0; }
   .list { flex:1 1 380px; }
@@ -432,7 +440,7 @@ const waitTag = (t) => t.status === "closed" || !WAIT[t.awaiting] ? null : h("sp
 function row(t, i) {
   const s = STATUS[t.status];
   return h("button", { class:"row" + (t.id === state.selected ? " sel" : "") + (state.changed.has(t.id) ? " flash" : "") + (state.animate ? " rise" : ""), style:`--c:${s.color};--i:${Math.min(i, 8)}`,
-    onclick: () => select(t.id) },
+    onclick: () => goTicket(t.id) },
     h("span", { class:"avatar", "aria-hidden":"true" }, [...t.userName][0] ?? "?"),
     h("span", { class:"t" }, h("b", {}, `#${t.id} · ${t.subject}`), h("small", {}, `${t.userName} · ${ago(t.updatedAt)}${t.assignee ? " · " + t.assignee : ""}`, waitTag(t))),
     h("span", { class:"tag" }, h("span", { class:"sq" }), s.label.toUpperCase()));
@@ -512,12 +520,14 @@ function renderDetail() {
     send.classList.remove("busy");
   }}, ta, send);
 
-  return h("section", { class:"panel detail" + (state.slide ? " slide" : "") },
+  return h("section", { class:"panel detail full" + (state.slide ? " slide" : "") },
     h("div", { class:"dh", style:`--c:${s.color}` },
-      h("div", { class:"eyebrow lbl" }, `Ticket #${t.id}`, h("span", { class:"badge" }, s.label.toUpperCase()), waitTag(t)),
+      h("div", { class:"toprow" },
+        h("button", { class:"btn ghost back", title:"Retour à la liste (Échap)", onclick:closeTicket }, "← Tickets"),
+        h("div", { class:"eyebrow lbl" }, `Ticket #${t.id}`, h("span", { class:"badge" }, s.label.toUpperCase()), waitTag(t)),
+        h("div", { class:"actions" }, buttons)),
       h("h2", {}, t.subject),
-      h("div", { class:"meta" }, `${t.userName} · ouvert ${ago(t.createdAt)}${t.assignee ? " · pris en charge par " + t.assignee : ""}`),
-      h("div", { class:"actions" }, buttons)),
+      h("div", { class:"meta" }, `${t.userName} · ouvert ${ago(t.createdAt)}${t.assignee ? " · pris en charge par " + t.assignee : ""}`)),
     msgs, form, closed ? null : h("div", { class:"hint" }, "Ctrl + Entrée pour envoyer"));
 }
 
@@ -534,10 +544,12 @@ function renderMain() {
   const sel = typing?.selectionStart;
   app.replaceChildren(
     h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), guildPicker(), h("div", { class:"spacer" }), live, state.me?.avatarUrl ? h("img", { class:"gicon", src:state.me.avatarUrl, alt:"", referrerpolicy:"no-referrer" }) : null, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
-    h("main", {},
-      h("div", { class:"head" + (state.animate ? " rise" : "") }, h("div", {}, h("div", { class:"eyebrow", style:"color:var(--accent-ink)" }, "Tickets"), h("h1", { class:"display" }, "Tous les tickets")), search),
-      h("div", { class:"kpis" }, kpi("open", 1), kpi("in_progress", 2), kpi("closed", 3)),
-      h("div", { class:"layout" }, renderList(), renderDetail())));
+    state.detail
+      ? h("main", { class:"focus" }, renderDetail())
+      : h("main", {},
+          h("div", { class:"head" + (state.animate ? " rise" : "") }, h("div", {}, h("div", { class:"eyebrow", style:"color:var(--accent-ink)" }, "Tickets"), h("h1", { class:"display" }, "Tous les tickets")), search),
+          h("div", { class:"kpis" }, kpi("open", 1), kpi("in_progress", 2), kpi("closed", 3)),
+          h("div", { class:"layout" }, renderList())));
   if (typing) { const el = document.getElementById("reply"); if (el && !el.disabled) { el.focus(); el.setSelectionRange(sel, sel); } }
   lastStats = { ...state.stats };
   state.animate = false; state.slide = false;
@@ -548,6 +560,7 @@ async function switchGuild(id) {
   if (id === state.guild) return renderMain();
   state.guild = id; store.set("guild", id);
   state.selected = null; state.detail = null; state.filter = ""; state.wait = ""; state.query = "";
+  if (location.hash) history.replaceState(null, "", location.pathname);
   state.tickets = []; state.loading = true; state.animate = true;
   renderMain();
   try { await load(); } catch (e) { if (e.message !== "auth") toast(e.message); }
@@ -581,11 +594,43 @@ function guildPicker() {
   return h("div", { class:"guild" }, btn, menu);
 }
 
-async function select(id) {
-  state.selected = id; state.slide = true;
-  try { state.detail = await api("/tickets/" + id); } catch (e) { if (e.message !== "auth") toast(e.message); return; }
-  renderMain();
+/* ---------- Navigation : un ticket = une page plein écran (#/t/12) ---------- */
+const ticketHash = (id) => "#/t/" + id;
+const hashId = () => Number(/^#\/t\/(\d+)$/.exec(location.hash)?.[1]) || null;
+
+function goTicket(id) {
+  if (location.hash === ticketHash(id)) syncFromHash(); else location.hash = ticketHash(id);
 }
+function closeTicket() {
+  if (!location.hash) return syncFromHash();
+  location.hash = "";
+}
+async function syncFromHash() {
+  const id = hashId();
+  if (id === state.selected && (id === null || state.detail)) return;
+  if (id === null) {
+    state.selected = null; state.detail = null; state.animate = true; renderMain();
+    return;
+  }
+  state.selected = id; state.slide = true;
+  try {
+    const d = await api("/tickets/" + id);
+    // Lien vers un ticket d'un autre serveur : on bascule dessus (si accessible).
+    if (d.ticket.guildId !== state.guild && state.guilds.some((g) => g.id === d.ticket.guildId)) {
+      state.guild = d.ticket.guildId; store.set("guild", state.guild);
+      state.detail = d; await load();
+    }
+    state.detail = d;
+  } catch (e) {
+    state.selected = null; state.detail = null;
+    if (e.message !== "auth") { toast(e.message); history.replaceState(null, "", location.pathname); }
+    return renderMain();
+  }
+  renderMain();
+  // On arrive directement dans la zone de réponse (sur grand écran, pour ne pas ouvrir le clavier mobile).
+  if (matchMedia("(min-width:901px)").matches) document.getElementById("reply")?.focus({ preventScroll:true });
+}
+addEventListener("hashchange", syncFromHash);
 
 async function refresh(force = false) {
   try {
@@ -623,6 +668,11 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "Tab") { e.preventDefault(); lb.el.querySelector("button")?.focus(); }
     return;
   }
+  if (e.key === "Escape" && state.selected && !state.menu && !document.querySelector(".scrim")) {
+    // Dans le champ de réponse, un premier Échap sort du champ (le brouillon est conservé) ; le second revient à la liste.
+    if (document.activeElement?.tagName === "TEXTAREA") document.activeElement.blur(); else closeTicket();
+    return;
+  }
   if (e.key === "Escape" && state.menu) { state.menu = false; renderMain(); document.getElementById("guild-btn")?.focus(); }
   if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? "")) { e.preventDefault(); document.getElementById("q")?.focus(); }
 });
@@ -631,6 +681,7 @@ document.addEventListener("keydown", (e) => {
   renderMain();
   try { await load(); state.loading = false; state.animate = true; renderMain(); } catch (e) { if (e.message !== "auth") { state.loading = false; renderMain(); } }
   connectEvents();
+  if (hashId()) await syncFromHash();
   // Filet de sécurité : le flux temps réel fait l'essentiel, ceci rattrape une coupure.
   setInterval(() => {
     if (!document.getElementById("q")) return;
