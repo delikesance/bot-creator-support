@@ -3,6 +3,8 @@ import { openDb } from "../src/db";
 import { TicketService } from "../src/tickets";
 import { SupportDesk, type Gateway } from "../src/desk";
 import { handleInteraction, type Ix } from "../src/bot/handlers";
+import { TicketError } from "../src/tickets";
+import { pack } from "../src/i18n";
 
 const gw: Gateway = {
   createTicketChannel: async () => "chanX",
@@ -97,5 +99,26 @@ describe("gestion dans le salon ticket", () => {
     expect(desk.tickets.get(id)!.status).toBe("closed");
     await handleInteraction(desk, ix({ kind: "button", id: "ticket:reopen", isStaff: true, ...inTicket }));
     expect(desk.tickets.get(id)!.status).toBe("open");
+  });
+});
+
+describe("note du client", () => {
+  const rated: unknown[][] = [];
+  const stub = (fail = false) =>
+    ({ rate: async (...a: unknown[]) => (rated.push(a), fail ? Promise.reject(new TicketError("déjà noté")) : undefined) }) as unknown as SupportDesk;
+  beforeEach(() => (rated.length = 0));
+
+  test("le bouton transmet ticket, utilisateur et note, puis remercie dans la langue", async () => {
+    await handleInteraction(stub(), ix({ kind: "button", id: "rate:12:4", userId: "u9", locale: "fr" }));
+    expect(rated).toEqual([[12, "u9", 4]]);
+    expect(out.replies).toEqual([pack("fr").ratingThanks]);
+  });
+  test("note refusée par le desk : message localisé, pas de crash", async () => {
+    await handleInteraction(stub(true), ix({ kind: "button", id: "rate:12:4", locale: "de" }));
+    expect(out.replies).toEqual([pack("de").ratingDone]);
+  });
+  test("identifiant hors 1 à 5 : ignoré", async () => {
+    await handleInteraction(stub(), ix({ kind: "button", id: "rate:12:9" }));
+    expect(rated).toEqual([]);
   });
 });

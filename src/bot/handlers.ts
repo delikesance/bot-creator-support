@@ -28,7 +28,7 @@ export async function handleInteraction(desk: SupportDesk, ix: Ix): Promise<void
     await route(desk, ix);
   } catch (e) {
     if (e instanceof TicketError) return ix.reply(`⚠️ ${e.message}`);
-    console.error("Erreur d'interaction", e);
+    console.error("Interaction failed", e);
     return ix.reply(pack(ix.locale).error);
   }
 }
@@ -49,6 +49,18 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   if (kind === "command" && id === "setup") {
     if (!ix.isStaff) return ix.reply(p.noPerm);
     return ix.postPanel();
+  }
+
+  // Note de 1 à 5 donnée au bouton posté à la fermeture : « rate:<ticket>:<n> ». Le desk vérifie l'auteur et l'état.
+  const rate = kind === "button" ? /^rate:(\d+):([1-5])$/.exec(id) : null;
+  if (rate) {
+    try {
+      await desk.rate(Number(rate[1]), ix.userId, Number(rate[2]));
+    } catch (e) {
+      if (e instanceof TicketError) return ix.reply(p.ratingDone);
+      throw e;
+    }
+    return ix.reply(p.ratingThanks);
   }
 
   const isClose = (kind === "command" && id === "close") || (kind === "button" && id === "ticket:close");

@@ -68,7 +68,12 @@ describe("transitions", () => {
 
 
   test("ticket inconnu", () => {
-    expect(() => svc.close(999)).toThrow(/introuvable/);
+    expect(() => svc.close(999)).toThrow(/not found/);
+    try {
+      svc.close(999);
+    } catch (e) {
+      expect((e as TicketError).code).toBe("not_found");
+    }
   });
 });
 

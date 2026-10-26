@@ -18,21 +18,22 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Config } from "../config";
-import type { Gateway, SupportDesk } from "../desk";
+import type { Gateway, OutFile, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
-import { messageContent } from "./content";
 import { pack } from "../i18n";
 import { registerCommands } from "./register";
+import { assetPath, ratingMessage, setupEmbed, styledMessage, type Style } from "./embeds";
+import { SETUP_EN } from "../i18n";
 
 const button = (id: string, label: string, style: ButtonStyle) =>
   new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
 
 const activeRow = () =>
   new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button("ticket:close", "Fermer", ButtonStyle.Danger),
+    button("ticket:close", "Close", ButtonStyle.Danger),
   );
 const closedRow = () =>
-  new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:reopen", "Rouvrir", ButtonStyle.Success));
+  new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:reopen", "Reopen", ButtonStyle.Success));
 
 export class DiscordGateway implements Gateway {
   constructor(
@@ -42,7 +43,7 @@ export class DiscordGateway implements Gateway {
 
   private async guild(id: string): Promise<Guild> {
     const g = await this.client.guilds.fetch(id).catch(() => null);
-    if (!g) throw new Error("Le bot n'est plus présent sur ce serveur.");
+    if (!g) throw new Error("The bot is no longer in this server.");
     return g;
   }
 
@@ -65,7 +66,7 @@ export class DiscordGateway implements Gateway {
 
   private async channel(id: string): Promise<TextChannel> {
     const c = await this.client.channels.fetch(id);
-    if (!c || c.type !== ChannelType.GuildText) throw new Error(`Salon ${id} introuvable.`);
+    if (!c || c.type !== ChannelType.GuildText) throw new Error(`Channel ${id} not found.`);
     return c;
   }
 
@@ -96,14 +97,16 @@ export class DiscordGateway implements Gateway {
   async send(
     channelId: string,
     text: string,
-    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string } },
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[]; style?: Style },
   ): Promise<void> {
     const ch = await this.channel(channelId);
+    const files = opts?.files?.map((f) => ({ attachment: Buffer.from(f.data), name: f.name }));
     if (opts?.as) {
       try {
         const hook = await this.webhook(ch);
         await hook.send({
-          content: text,
+          content: text || undefined,
+          files,
           username: opts.as.name.slice(0, 80),
           avatarURL: opts.as.avatarUrl,
           allowedMentions: { parse: [] },
@@ -112,16 +115,36 @@ export class DiscordGateway implements Gateway {
       } catch (e) {
         // Permission « Gérer les webhooks » absente, etc. : on retombe sur le bot plutôt que de perdre le message.
         this.hooks.delete(ch.id);
-        console.warn(`Webhook indisponible dans ${channelId}, envoi en tant que bot :`, (e as Error).message);
+        console.warn(`Webhook unavailable in ${channelId}, sending as the bot:`, (e as Error).message);
       }
     }
     const components =
       opts?.controls === "active" ? [activeRow()] : opts?.controls === "closed" ? [closedRow()] : [];
+    // Accueil et fermeture : texte localisé dans un embed aux couleurs du desk, Bibi en vignette (fichier joint).
+    const styled = opts?.style ? styledMessage(text, opts.style) : null;
+    const all = [...(files ?? []), ...(styled?.files.map((n) => ({ attachment: assetPath(n), name: n })) ?? [])];
     await ch.send({
-      content: text,
+      content: (styled ? styled.content : text) || undefined,
+      embeds: styled ? [styled.embed] : [],
+      files: all,
       components,
       // Seul le message d'accueil peut notifier l'auteur ; les réponses du panel ne ping personne.
-      allowedMentions: opts?.controls === "active" ? { parse: ["users"] } : { parse: [] },
+      allowedMentions: opts?.controls === "active" || opts?.style === "welcome" ? { parse: ["users"] } : { parse: [] },
+    });
+  }
+
+  /** Cinq boutons de 1 à 5 dans le salon du ticket, dans la langue du client. */
+  async askRating(channelId: string, ticketId: number, locale?: string): Promise<void> {
+    const ch = await this.channel(channelId);
+    const m = ratingMessage(ticketId, locale);
+    await ch.send({
+      embeds: [m.embed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          m.buttons.map((b) => button(b.customId, b.label, ButtonStyle.Secondary)),
+        ),
+      ],
+      allowedMentions: { parse: [] },
     });
   }
 
@@ -191,13 +214,13 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     },
     postPanel: async () => {
       const ch = i.channel;
-      // Le panneau est public : il suit la langue du serveur ; la confirmation, celle de l'admin.
-      const pp = pack(i.guildLocale ?? i.locale);
+      // Le panneau est public et toujours en anglais (ni langue du serveur ni celle de l'admin) ; seule la confirmation suit l'admin.
       if (ch && "send" in ch) {
         await ch.send({
-          content: pp.panel,
+          embeds: [setupEmbed()],
+          files: [{ attachment: assetPath("banner.png"), name: "banner.png" }],
           components: [
-            new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:open", pp.panelBtn, ButtonStyle.Primary)),
+            new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:open", SETUP_EN.button, ButtonStyle.Primary)),
           ],
         });
       }
@@ -223,17 +246,18 @@ export async function startBot(cfg: Config, desk: SupportDesk, makeGateway: (c: 
 
   client.on(Events.MessageCreate, (m) => {
     if (m.author.bot || !m.inGuild()) return;
-    const content = messageContent(m.content, m.attachments.map((a) => a.url));
-    desk.recordDiscordMessage(m.channelId, { id: m.author.id, name: m.author.username }, content);
+    // Les pièces jointes sont téléchargées par le desk : l'URL du CDN expire, le panel sert sa propre copie.
+    const files = m.attachments.map((a) => ({ name: a.name, size: a.size, url: a.url }));
+    void desk.recordDiscordMessage(m.channelId, { id: m.author.id, name: m.author.username }, m.content, files);
   });
 
   client.once(Events.ClientReady, async (c) => {
-    console.log(`Bot connecté : ${c.user.tag}`);
+    console.log(`Bot connected: ${c.user.tag}`);
     await registerCommands(new REST().setToken(cfg.token), cfg);
     console.log(
       cfg.commandGuildId
-        ? `Commandes enregistrées sur le serveur de test ${cfg.commandGuildId}`
-        : "Commandes enregistrées globalement (production)",
+        ? `Commands registered on test server ${cfg.commandGuildId}`
+        : "Commands registered globally (production)",
     );
   });
 
