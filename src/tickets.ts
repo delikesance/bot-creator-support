@@ -121,7 +121,17 @@ export interface AuditEntry {
 
 const REPLY_NAME_RE = /^[a-z0-9-]{1,32}$/;
 
-export class TicketError extends Error {}
+/** Nature de l'erreur, pour que les appelants choisissent un statut HTTP sans lire le texte. */
+export type TicketErrorCode = "not_found" | "closed" | "not_closed" | "invalid" | "conflict" | "quota";
+
+export class TicketError extends Error {
+  constructor(
+    message: string,
+    readonly code: TicketErrorCode = "invalid",
+  ) {
+    super(message);
+  }
+}
 
 /** Changement notifié aux abonnés (flux temps réel du panel). */
 export interface TicketEvent {
@@ -230,7 +240,7 @@ export class TicketService {
       try {
         fn({ type, ticketId, guildId: t.guildId });
       } catch (e) {
-        console.error("Abonné d'événements en erreur", e);
+        console.error("Event subscriber failed", e);
       }
     }
   }
@@ -246,7 +256,7 @@ export class TicketService {
         )
         .get(input.guildId, input.userId)!.n;
       if (n >= opts.maxActivePerUser) {
-        throw new TicketError(quotaText(input.locale, n));
+        throw new TicketError(quotaText(input.locale, n), "quota");
       }
     }
     const now = Date.now();
@@ -320,28 +330,28 @@ export class TicketService {
 
   claim(id: number, by: { id: string; name: string }): Ticket {
     const t = this.require(id);
-    if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
+    if (t.status === "closed") throw new TicketError("This ticket is closed.", "closed");
     return this.update(id, "in_progress", by.name, null, by.id);
   }
 
   close(id: number, opts: { reason?: CloseReason; actor?: string } = {}): Ticket {
     const t = this.require(id);
-    if (t.status === "closed") throw new TicketError("Ce ticket est déjà fermé.");
-    if (opts.reason !== undefined && !CLOSE_REASONS.includes(opts.reason)) throw new TicketError("Raison de fermeture invalide.");
+    if (t.status === "closed") throw new TicketError("This ticket is already closed.", "closed");
+    if (opts.reason !== undefined && !CLOSE_REASONS.includes(opts.reason)) throw new TicketError("Invalid close reason.");
     this.log(id, opts.actor ?? "system", "close", opts.reason ?? "");
     return this.update(id, "closed", t.assignee, Date.now(), t.assigneeId, opts.reason ?? null);
   }
 
   reopen(id: number, actor = "system"): Ticket {
     const t = this.require(id);
-    if (t.status !== "closed") throw new TicketError("Ce ticket n'est pas fermé.");
+    if (t.status !== "closed") throw new TicketError("This ticket is not closed.", "not_closed");
     this.log(id, actor, "reopen", "");
     return this.update(id, "open", null, null, null);
   }
 
   setPriority(id: number, priority: Priority, actor = "system"): Ticket {
     this.require(id);
-    if (!PRIORITIES.includes(priority)) throw new TicketError("Priorité invalide.");
+    if (!PRIORITIES.includes(priority)) throw new TicketError("Invalid priority.");
     this.log(id, actor, "priority", priority);
     return this.patch(id, "priority = ?", priority);
   }
@@ -350,9 +360,9 @@ export class TicketService {
   setTags(id: number, tags: string[], actor = "system"): Ticket {
     this.require(id);
     const clean = [...new Set(tags.map((t) => t.trim().toLowerCase()))];
-    if (clean.length > MAX_TAGS) throw new TicketError(`Au plus ${MAX_TAGS} étiquettes.`);
+    if (clean.length > MAX_TAGS) throw new TicketError(`At most ${MAX_TAGS} tags.`);
     const bad = clean.find((t) => !TAG_RE.test(t));
-    if (bad !== undefined) throw new TicketError(`Étiquette invalide : « ${bad} ».`);
+    if (bad !== undefined) throw new TicketError(`Invalid tag: "${bad}".`);
     this.log(id, actor, "tags", clean.join(", "));
     return this.patch(id, "tags = ?", JSON.stringify(clean));
   }
@@ -369,9 +379,9 @@ export class TicketService {
   /** Note du client : 1 à 5, ticket fermé, une seule fois. */
   setRating(id: number, rating: number): Ticket {
     const t = this.require(id);
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new TicketError("La note doit être comprise entre 1 et 5.");
-    if (t.status !== "closed") throw new TicketError("Le ticket n'est pas fermé.");
-    if (t.rating !== null) throw new TicketError("Ce ticket a déjà été noté.");
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new TicketError("The rating must be between 1 and 5.");
+    if (t.status !== "closed") throw new TicketError("This ticket is not closed.", "not_closed");
+    if (t.rating !== null) throw new TicketError("This ticket has already been rated.", "conflict");
     return this.patch(id, "rating = ?", rating);
   }
 
@@ -496,8 +506,8 @@ export class TicketService {
 
   /** Crée la réponse ou remplace le texte de celle qui porte déjà ce nom. */
   saveReply(guildId: string, name: string, text: string, actor = "system"): SavedReply {
-    if (!REPLY_NAME_RE.test(name)) throw new TicketError("Nom invalide : 1 à 32 caractères parmi a-z, 0-9 et « - ».");
-    if (!text.trim()) throw new TicketError("Le texte est vide.");
+    if (!REPLY_NAME_RE.test(name)) throw new TicketError("Invalid name: 1 to 32 characters among a-z, 0-9 and \"-\".");
+    if (!text.trim()) throw new TicketError("The text is empty.");
     const r = this.db
       .query<SavedReply, [string, string, string]>(
         "INSERT INTO replies (guild_id,name,text) VALUES (?,?,?) ON CONFLICT(guild_id,name) DO UPDATE SET text = excluded.text RETURNING id, name, text",
@@ -564,7 +574,7 @@ export class TicketService {
 
   private require(id: number): Ticket {
     const t = this.get(id);
-    if (!t) throw new TicketError(`Ticket #${id} introuvable.`);
+    if (!t) throw new TicketError(`Ticket #${id} not found.`, "not_found");
     return t;
   }
 
