@@ -30,10 +30,10 @@ const button = (id: string, label: string, style: ButtonStyle) =>
 
 const activeRow = () =>
   new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button("ticket:close", "Fermer", ButtonStyle.Danger),
+    button("ticket:close", "Close", ButtonStyle.Danger),
   );
 const closedRow = () =>
-  new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:reopen", "Rouvrir", ButtonStyle.Success));
+  new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:reopen", "Reopen", ButtonStyle.Success));
 
 export class DiscordGateway implements Gateway {
   constructor(
@@ -43,7 +43,7 @@ export class DiscordGateway implements Gateway {
 
   private async guild(id: string): Promise<Guild> {
     const g = await this.client.guilds.fetch(id).catch(() => null);
-    if (!g) throw new Error("Le bot n'est plus présent sur ce serveur.");
+    if (!g) throw new Error("The bot is no longer in this server.");
     return g;
   }
 
@@ -66,7 +66,7 @@ export class DiscordGateway implements Gateway {
 
   private async channel(id: string): Promise<TextChannel> {
     const c = await this.client.channels.fetch(id);
-    if (!c || c.type !== ChannelType.GuildText) throw new Error(`Salon ${id} introuvable.`);
+    if (!c || c.type !== ChannelType.GuildText) throw new Error(`Channel ${id} not found.`);
     return c;
   }
 
@@ -115,7 +115,7 @@ export class DiscordGateway implements Gateway {
       } catch (e) {
         // Permission « Gérer les webhooks » absente, etc. : on retombe sur le bot plutôt que de perdre le message.
         this.hooks.delete(ch.id);
-        console.warn(`Webhook indisponible dans ${channelId}, envoi en tant que bot :`, (e as Error).message);
+        console.warn(`Webhook unavailable in ${channelId}, sending as the bot:`, (e as Error).message);
       }
     }
     const components =
@@ -252,12 +252,12 @@ export async function startBot(cfg: Config, desk: SupportDesk, makeGateway: (c: 
   });
 
   client.once(Events.ClientReady, async (c) => {
-    console.log(`Bot connecté : ${c.user.tag}`);
+    console.log(`Bot connected: ${c.user.tag}`);
     await registerCommands(new REST().setToken(cfg.token), cfg);
     console.log(
       cfg.commandGuildId
-        ? `Commandes enregistrées sur le serveur de test ${cfg.commandGuildId}`
-        : "Commandes enregistrées globalement (production)",
+        ? `Commands registered on test server ${cfg.commandGuildId}`
+        : "Commands registered globally (production)",
     );
   });
 

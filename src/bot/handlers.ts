@@ -28,7 +28,7 @@ export async function handleInteraction(desk: SupportDesk, ix: Ix): Promise<void
     await route(desk, ix);
   } catch (e) {
     if (e instanceof TicketError) return ix.reply(`⚠️ ${e.message}`);
-    console.error("Erreur d'interaction", e);
+    console.error("Interaction failed", e);
     return ix.reply(pack(ix.locale).error);
   }
 }
