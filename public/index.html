@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Support — Panel admin</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%237C5CF0' d='M1 2h1V1h4v1h1v5H1z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cg fill='%23F4F0EA'%3E%3Cpath d='M3 1h6v1h1v1h1v6h-1v1H9v1H3v-1H2V9H1V3h1V2h1z'/%3E%3C/g%3E%3Cg fill='%2309090C'%3E%3Crect x='3.4' y='4.8' width='1.6' height='1.6'/%3E%3Crect x='6.8' y='4.8' width='1.6' height='1.6'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
@@ -37,11 +37,19 @@
   @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation:none !important; transition:none !important; } }
 
   header.top { height:64px; padding:0 32px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(11,11,12,.92); backdrop-filter:blur(8px); z-index:5; }
-  .logo { width:28px; height:28px; background:var(--accent); clip-path:polygon(0 25%,12% 25%,12% 12%,25% 12%,25% 0,75% 0,75% 12%,88% 12%,88% 25%,100% 25%,100% 100%,0 100%); display:flex; align-items:center; justify-content:center; gap:6px; flex:none; }
-  .logo i { width:4px; height:6px; background:var(--bg); display:block; }
   .live { display:flex; align-items:center; gap:8px; font:500 12px var(--mono); letter-spacing:.08em; color:var(--muted); }
   .live::before { content:""; width:8px; height:8px; background:var(--accent-ink); animation:pulse 1.8s ease-in-out infinite; }
   .live.off::before { background:var(--danger); animation:none; }
+  .bibi { display:inline-block; flex:none; position:relative; vertical-align:middle; }
+  .bibi svg { display:block; overflow:visible; }
+  .bibi .body { transform-origin:50% 85%; }
+  .bibi.move.idle .body { animation:bbIdle 2.8s ease-in-out infinite; }
+  .bibi.move.welcome .body { animation:bbWelcome 2s ease-in-out infinite; }
+  .bibi .blink { transform-box:fill-box; transform-origin:center; }
+  .bibi.move.idle .blink { animation:bbBlink 4.2s ease-in-out infinite; }
+  @keyframes bbIdle { 0%,100% { transform:translateY(0) scale(1,1); } 50% { transform:translateY(-4%) scale(.98,1.02); } }
+  @keyframes bbWelcome { 0%,100% { transform:translateY(0) rotate(0); } 30% { transform:translateY(-5%) rotate(-7deg) scale(1.03); } 70% { transform:translateY(-3.5%) rotate(7deg) scale(1.03); } }
+  @keyframes bbBlink { 0%,92%,100% { transform:scaleY(1); } 95% { transform:scaleY(.1); } }
   .spacer { flex:1; }
 
   .btn { height:36px; padding:0 16px; background:var(--raised); border:1px solid var(--border); border-radius:2px; font-weight:600; font-size:14px; transition:transform .12s, box-shadow .12s, border-color .15s, background .15s; white-space:nowrap; }
@@ -99,7 +107,6 @@
   .tag { font:700 11px var(--mono); letter-spacing:.08em; color:var(--c); display:flex; align-items:center; gap:6px; white-space:nowrap; }
   .badge { padding:4px 8px; border:1px solid var(--c); color:var(--c); font:700 11px var(--mono); letter-spacing:.08em; border-radius:2px; }
   .empty { padding:48px 24px; text-align:center; color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:14px; }
-  .empty .logo { background:var(--border); }
   .skel { height:64px; margin:8px 12px; background:linear-gradient(90deg,var(--surface) 25%,var(--raised) 50%,var(--surface) 75%); background-size:200% 100%; animation:shimmer 1.4s linear infinite; }
 
   .dh { padding:20px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:12px; flex:none; }
@@ -121,8 +128,6 @@
 
   .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
   .login { width:100%; max-width:380px; padding:32px; display:flex; flex-direction:column; gap:16px; animation:rise .5s var(--ease) both; }
-  .login .logo { width:44px; height:44px; }
-  .login .logo i { width:6px; height:9px; }
   .login h1 { margin:0; font-size:22px; font-weight:600; }
   .login label { font-weight:600; }
   .login input { width:100%; height:48px; padding:0 16px; background:var(--bg); border:1px solid var(--border); border-radius:2px; margin-top:6px; }
@@ -138,7 +143,7 @@
   .dialog h3 { margin:0; font-size:20px; font-weight:600; }
   .dialog p { margin:0; color:var(--ink-2); }
   .dialog .actions { justify-content:flex-end; margin-top:6px; }
-  .toast { position:fixed; bottom:20px; right:20px; max-width:360px; background:var(--raised); border:1px solid var(--danger-line); border-left-width:4px; padding:12px 16px; border-radius:2px; animation:toast .3s var(--ease) both; z-index:30; }
+  .toast { display:flex; align-items:center; gap:12px; position:fixed; bottom:20px; right:20px; max-width:360px; background:var(--raised); border:1px solid var(--danger-line); border-left-width:4px; padding:12px 16px; border-radius:2px; animation:toast .3s var(--ease) both; z-index:30; }
   .toast.ok { border-color:var(--accent-line); }
 </style>
 </head>
@@ -151,7 +156,7 @@ const STATUS = {
   closed:      { label:"Fermé",    color:"#AEACA8", hint:"Résolus" },
 };
 const TABS = [["", "Tous"], ["open", "Ouverts"], ["in_progress", "En cours"], ["closed", "Fermés"]];
-const state = { filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
+const state = { me:null, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
 const app = document.getElementById("app");
 let lastStats = null;
 
@@ -178,7 +183,7 @@ async function api(path, opts = {}) {
 const post = (path, body) => api(path, { method:"POST", body: body ? JSON.stringify(body) : undefined });
 
 function toast(msg, ok = false) {
-  const t = h("div", { class:"toast" + (ok ? " ok" : ""), role:"status" }, msg);
+  const t = h("div", { class:"toast" + (ok ? " ok" : ""), role:"status" }, bibi(ok ? "success" : "error", 24), msg);
   document.body.append(t);
   setTimeout(() => t.remove(), 4000);
 }
@@ -205,8 +210,41 @@ function confirmDialog(title, text, confirmLabel) {
   });
 }
 
+/* ---------- Bibi (mascotte du design system, grille 12, coins en escalier) ---------- */
+const BIBI = {
+  idle:    { g:"#F4F0EA", i:"#09090C", r:[[3.4,4.8,1.6,1.6],[6.8,4.8,1.6,1.6]], blink:true },
+  welcome: { g:"#7C5CF0", i:"#09090C", r:[[3.2,5.4,2,.55]], l:["6.8,6.2 7.8,4.8 8.8,6.2"] },
+  empty:   { g:"#F4F0EA", i:"#09090C", r:[[2.6,4.8,1.6,1.6],[6,4.8,1.6,1.6]] },
+  success: { g:"#7C5CF0", i:"#09090C", l:["3.2,6.2 4.2,4.8 5.2,6.2","6.8,6.2 7.8,4.8 8.8,6.2"] },
+  error:   { g:"#FF8A8A", i:"#09090C", l:["3.2,4.8 4.8,5.6 3.2,6.4","8.8,4.8 7.2,5.6 8.8,6.4"], w:.65 },
+};
+function bibi(state = "idle", size = 28, move = false) {
+  const d = BIBI[state], NS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.append(e); return e; };
+  const svg = mk("svg", { width:size, height:size, viewBox:"0 0 12 12", "shape-rendering":"crispEdges", "aria-hidden":"true" });
+  const body = mk("g", { class:"body" }, svg);
+  const ground = mk("g", { fill:d.g }, body);
+  for (const [x, y, w, h] of [[3,1,6,1],[2,2,8,1],[1,3,10,6],[2,9,8,1],[3,10,6,1]]) mk("rect", { x, y, width:w, height:h }, ground);
+  const eyes = mk("g", { fill:d.i, class:d.blink ? "blink" : "" }, body);
+  for (const [x, y, w, h] of d.r ?? []) mk("rect", { x, y, width:w, height:h }, eyes);
+  const lines = mk("g", { fill:"none", stroke:d.i, "stroke-width":d.w ?? .7, "stroke-linecap":"round", "stroke-linejoin":"round", "shape-rendering":"geometricPrecision" }, body);
+  for (const points of d.l ?? []) mk("polyline", { points }, lines);
+  const wrap = h("span", { class:`bibi ${state}${move ? " move" : ""}`, role:"img", "aria-label":"Bibi, la mascotte", style:`width:${size}px;height:${size}px` });
+  wrap.append(svg);
+  return wrap;
+}
+
 /* ---------- Connexion ---------- */
-function renderLogin(error = "") {
+async function renderLogin(error = "") {
+  const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({ oauth: false }));
+  if (cfg.oauth) {
+    const card = h("div", { class:"panel login" }, bibi("welcome", 56, true),
+      h("div", {}, h("div", { class:"eyebrow" }, "Panel admin"), h("h1", {}, "Connexion au support")),
+      h("p", { style:"margin:0;color:var(--ink-2)" }, "Connecte-toi avec ton compte Discord. Seuls les administrateurs ont accès."),
+      h("a", { class:"btn hero", href:"/auth/login", style:"height:48px;display:flex;align-items:center;justify-content:center;text-decoration:none;color:#fff" }, "Se connecter avec Discord"));
+    app.replaceChildren(h("div", { class:"login-wrap" }, card));
+    return;
+  }
   const input = h("input", { id:"pw", type:"password", placeholder:"••••••••", autocomplete:"current-password", autofocus:true });
   const err = h("div", { class:"err", role:"alert" }, error);
   const btn = h("button", { class:"btn hero" }, "Se connecter");
@@ -216,7 +254,7 @@ function renderLogin(error = "") {
     try { await post("/login", { password: input.value }); state.animate = true; state.loading = true; renderMain(); await load(); state.loading = false; renderMain(); }
     catch (x) { err.textContent = x.message; form.classList.remove("shake"); void form.offsetWidth; form.classList.add("shake"); input.select(); }
     btn.classList.remove("busy");
-  }}, h("div", { class:"logo" }, h("i"), h("i")), h("div", {}, h("div", { class:"eyebrow" }, "Panel admin"), h("h1", {}, "Connexion au support")),
+  }}, bibi("welcome", 56, true), h("div", {}, h("div", { class:"eyebrow" }, "Panel admin"), h("h1", {}, "Connexion au support")),
      h("div", {}, h("label", { for:"pw" }, "Mot de passe"), input), err, btn);
   app.replaceChildren(h("div", { class:"login-wrap" }, form));
   input.focus();
@@ -224,6 +262,7 @@ function renderLogin(error = "") {
 
 /* ---------- Données ---------- */
 async function load() {
+  state.me ??= await api("/me").catch((e) => { if (e.message === "auth") throw e; return null; });
   const data = await api("/tickets");
   const prev = new Map(state.tickets.map((t) => [t.id, t.status + t.updatedAt]));
   state.changed = new Set(state.tickets.length ? data.tickets.filter((t) => prev.get(t.id) !== t.status + t.updatedAt).map((t) => t.id) : []);
@@ -267,7 +306,7 @@ function renderList() {
   let body;
   if (state.loading) body = [1, 2, 3, 4].map(() => h("div", { class:"skel" }));
   else if (items.length) body = items.map(row);
-  else body = [h("div", { class:"empty" }, h("div", { class:"logo" }, h("i"), h("i")),
+  else body = [h("div", { class:"empty" }, bibi("empty", 44),
     state.tickets.length ? "Aucun ticket ne correspond à ta recherche." : "Aucun ticket pour l'instant. Tout est calme.")];
   const tabs = h("div", { class:"tabs", role:"tablist" }, TABS.map(([k, label]) => {
     const count = k ? state.stats[k] : state.tickets.length;
@@ -279,7 +318,7 @@ function renderList() {
 
 function renderDetail() {
   const d = state.detail;
-  if (!d) return h("section", { class:"panel detail empty" }, h("div", { class:"logo" }, h("i"), h("i")), "Sélectionne un ticket pour le lire et y répondre.");
+  if (!d) return h("section", { class:"panel detail empty" }, bibi("empty", 44), "Sélectionne un ticket pour le lire et y répondre.");
   const t = d.ticket, s = STATUS[t.status];
 
   const act = (label, path, cls = "") => {
@@ -337,13 +376,13 @@ function renderMain() {
     h("input", { id:"q", type:"search", placeholder:"Rechercher un ticket ou un nom", value:state.query, "aria-label":"Rechercher",
       oninput:(e) => { state.query = e.target.value; const pos = e.target.selectionStart; renderMain(); const el = document.getElementById("q"); el.focus(); el.setSelectionRange(pos, pos); } }),
     h("kbd", {}, "/"));
-  const logout = h("button", { class:"btn ghost", onclick: async () => { await post("/logout"); renderLogin(); } }, "Déconnexion");
+  const logout = h("button", { class:"btn ghost", onclick: async () => { await post("/logout"); state.me = null; renderLogin(); } }, "Déconnexion");
   const live = h("div", { class:"live" + (state.online ? "" : " off") }, state.online ? "En direct" : "Hors ligne");
 
   const typing = document.activeElement?.id === "reply" ? document.activeElement : null;
   const sel = typing?.selectionStart;
   app.replaceChildren(
-    h("header.top".split(".")[0], { class:"top" }, h("div", { class:"logo" }, h("i"), h("i")), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), h("div", { class:"spacer" }), live, logout),
+    h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), h("div", { class:"spacer" }), live, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
     h("main", {},
       h("div", { class:"head" + (state.animate ? " rise" : "") }, h("div", {}, h("div", { class:"eyebrow", style:"color:var(--accent-ink)" }, "Tickets"), h("h1", { class:"display" }, "Tous les tickets")), search),
       h("div", { class:"kpis" }, kpi("open", 1), kpi("in_progress", 2), kpi("closed", 3)),
