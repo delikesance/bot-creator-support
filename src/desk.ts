@@ -1,5 +1,20 @@
-import { TicketError, TicketService, type Ticket } from "./tickets";
+import { TicketError, TicketService, type NewAttachment, type Ticket, type TicketMessage } from "./tickets";
 import { pack, quotaText, welcomeText } from "./i18n";
+import { downloadFile } from "./bot/download";
+import { MAX_FILE_BYTES, storeFile, validateBatch, validateFile } from "./storage";
+
+/** Fichier à poster dans un salon. */
+export interface OutFile {
+  name: string;
+  data: Uint8Array;
+}
+
+/** Pièce jointe d'un message Discord entrant (l'URL du CDN expire au bout d'environ 24 h). */
+export interface IncomingFile {
+  name: string;
+  size: number;
+  url: string;
+}
 
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
@@ -7,7 +22,7 @@ export interface Gateway {
   send(
     channelId: string,
     text: string,
-    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string } },
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[] },
   ): Promise<void>;
   setUserLocked(channelId: string, userId: string, locked: boolean): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
@@ -20,13 +35,43 @@ export interface Actor {
 
 const MAX_SUBJECT = 100;
 const MAX_DESCRIPTION = 1000;
+/** Limite d'un message Discord (webhook compris). */
+const MAX_MESSAGE = 2000;
+
+/**
+ * Politique des liens dans une réponse du panel.
+ * - Une URL nue reste telle quelle : Discord fait lui-même l'aperçu.
+ * - `[texte](https://…)` est réécrit en « texte » puis l'URL nue seule sur sa ligne. Le Markdown masqué n'est
+ *   pas fiable pour tous les envois (webhook ou bot de repli) et cacherait la destination au client ; l'URL sur
+ *   sa ligne est rendue et dépliée par Discord. Si le texte est déjà l'URL, on garde l'URL seule.
+ * - Seuls http et https sont réécrits : `[x](javascript:…)` reste du texte inerte.
+ * Ce qui est historisé est ce qui part sur Discord, pour que le panel et le salon montrent la même chose.
+ */
+export function formatLinks(text: string): string {
+  return text
+    .replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]+)\)/g, (_, label: string, url: string) =>
+      label.trim() === url ? url : `${label.trim()}\n${url}\n`,
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export class SupportDesk {
   constructor(
     public readonly tickets: TicketService,
     private gw: Gateway,
-    private opts: { maxActivePerUser?: number } = {},
+    private opts: {
+      maxActivePerUser?: number;
+      /** Dossier de stockage des pièces jointes ; sans lui, les fichiers sont refusés. */
+      attachmentsDir?: string;
+      /** Téléchargement des pièces jointes Discord (injectable pour les tests). */
+      download?: (url: string) => Promise<Uint8Array>;
+    } = {},
   ) {}
+
+  get attachmentsDir(): string | undefined {
+    return this.opts.attachmentsDir;
+  }
 
   async open(input: {
     guildId: string;
@@ -80,24 +125,84 @@ export class SupportDesk {
   }
 
   /** Réponse envoyée depuis le panel : postée par le bot dans le salon. */
-  async reply(id: number, content: string, authorName: string, avatarUrl?: string): Promise<void> {
+  async reply(id: number, content: string, authorName: string, avatarUrl?: string, files: OutFile[] = []): Promise<TicketMessage> {
     const t = this.tickets.get(id);
     if (!t) throw new TicketError(`Ticket #${id} introuvable.`);
     if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
-    const text = content.trim();
-    if (!text) throw new TicketError("Le message est vide.");
+    const text = formatLinks(content);
+    if (!text && !files.length) throw new TicketError("Le message est vide.");
+    if (text.length > MAX_MESSAGE) throw new TicketError(`Le message dépasse ${MAX_MESSAGE} caractères.`);
+    // Validation avant tout envoi : un fichier refusé n'envoie rien (ni texte ni autres fichiers).
+    const valid = validateBatch(files);
+    const dir = this.opts.attachmentsDir;
+    if (files.length && !dir) throw new TicketError("Le stockage des pièces jointes n'est pas configuré.");
     // Côté Discord, le message apparaît sous le pseudo et l'avatar de l'admin (webhook du salon).
-    await this.gw.send(t.channelId, text, { as: { name: authorName, avatarUrl } });
+    await this.gw.send(t.channelId, text, { as: { name: authorName, avatarUrl }, ...(files.length ? { files } : {}) });
+    const stored: NewAttachment[] = [];
+    for (const [i, v] of valid.entries()) {
+      stored.push({ name: v.name, mime: v.mime, size: v.size, file: await storeFile(dir!, files[i]!.data, v.ext) });
+    }
     this.autoClaim(t, authorName);
-    this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel" });
+    return this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel", attachments: stored });
   }
 
-  /** Message posté sur Discord par un humain dans un salon : historisé s'il s'agit d'un ticket. */
-  recordDiscordMessage(channelId: string, author: Actor, content: string): void {
+  /** Les messages avec pièces jointes (téléchargement asynchrone) restent dans l'ordre d'arrivée, salon par salon. */
+  private pending = new Map<string, Promise<void>>();
+
+  /**
+   * Message posté sur Discord par un humain dans un salon : historisé s'il s'agit d'un ticket.
+   * Sans pièce jointe et sans file d'attente, l'enregistrement est synchrone.
+   */
+  recordDiscordMessage(channelId: string, author: Actor, content: string, files: IncomingFile[] = []): Promise<void> {
+    const prev = this.pending.get(channelId);
+    if (!prev && !files.length) {
+      this.recordNow(channelId, author, content, [], []);
+      return Promise.resolve();
+    }
+    const run: Promise<void> = (prev ?? Promise.resolve())
+      .then(async () => {
+        const { stored, notes } = await this.fetchIncoming(files);
+        this.recordNow(channelId, author, content, stored, notes);
+      })
+      .catch((e) => console.error("Enregistrement du message Discord :", e))
+      .finally(() => {
+        if (this.pending.get(channelId) === run) this.pending.delete(channelId);
+      });
+    this.pending.set(channelId, run);
+    return run;
+  }
+
+  private recordNow(channelId: string, author: Actor, content: string, attachments: NewAttachment[], notes: string[]) {
     const t = this.tickets.getByChannel(channelId);
-    if (!t || !content.trim()) return;
-    if (author.id !== t.userId) this.autoClaim(t, author.name);
-    this.tickets.addMessage(t.id, { authorId: author.id, authorName: author.name, content, source: "discord" });
+    if (!t) return;
+    if (content.trim() || attachments.length) {
+      if (author.id !== t.userId) this.autoClaim(t, author.name);
+      this.tickets.addMessage(t.id, { authorId: author.id, authorName: author.name, content: content.trim(), source: "discord", attachments });
+    }
+    for (const note of notes) {
+      this.tickets.addMessage(t.id, { authorId: "system", authorName: "Système", content: note, source: "system" });
+    }
+  }
+
+  /** Télécharge et stocke les pièces jointes ; un échec saute le fichier et produit une note système (avec le lien CDN, valable ~24 h). */
+  private async fetchIncoming(files: IncomingFile[]): Promise<{ stored: NewAttachment[]; notes: string[] }> {
+    const stored: NewAttachment[] = [];
+    const notes: string[] = [];
+    const dir = this.opts.attachmentsDir;
+    const download = this.opts.download ?? ((url: string) => downloadFile(url));
+    for (const f of files) {
+      try {
+        if (!dir) throw new Error("stockage non configuré");
+        if (f.size > MAX_FILE_BYTES) throw new Error("plus de 25 Mo");
+        const data = await download(f.url);
+        const v = validateFile({ name: f.name, data });
+        stored.push({ name: v.name, mime: v.mime, size: v.size, file: await storeFile(dir, data, v.ext) });
+      } catch (e) {
+        const why = e instanceof Error ? e.message : String(e);
+        notes.push(`⚠️ Pièce jointe « ${f.name} » non enregistrée (${why}). Lien Discord, valable environ 24 h : ${f.url}`);
+      }
+    }
+    return { stored, notes };
   }
 
   /** Premier membre du support qui répond : le ticket passe « en cours » à son nom, sans rien écrire sur Discord. */
