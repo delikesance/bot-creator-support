@@ -28,7 +28,6 @@ const button = (id: string, label: string, style: ButtonStyle) =>
 
 const activeRow = () =>
   new ActionRowBuilder<ButtonBuilder>().addComponents(
-    button("ticket:claim", "Prendre en charge", ButtonStyle.Primary),
     button("ticket:close", "Fermer", ButtonStyle.Danger),
   );
 const closedRow = () =>

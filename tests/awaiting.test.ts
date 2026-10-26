@@ -41,8 +41,8 @@ describe("qui doit répondre", () => {
   test("les notes système (prise en charge, fermeture…) ne changent rien", async () => {
     const t = await desk.open({ ...user, subject: "a" });
     await desk.reply(t.id, "Bonjour", "Angelo");
-    await desk.claim(t.id, { id: "s", name: "Staff" });
-    await desk.release(t.id, "Staff");
+    await desk.close(t.id, "Staff");
+    await desk.reopen(t.id, "Staff");
     expect(awaiting(t.id)).toBe("customer");
   });
   test("compteurs : seuls les tickets non fermés comptent, par serveur", async () => {

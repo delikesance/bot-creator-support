@@ -50,9 +50,8 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   const isClose = (kind === "command" && id === "close") || (kind === "button" && id === "ticket:close");
-  const isClaim = kind === "button" && id === "ticket:claim";
   const isReopen = kind === "button" && id === "ticket:reopen";
-  if (!isClose && !isClaim && !isReopen) return;
+  if (!isClose && !isReopen) return;
 
   const t = desk.tickets.getByChannel(ix.channelId);
   if (!t) return ix.reply("⚠️ Cette action n'est possible que dans un salon de ticket.");
@@ -63,10 +62,6 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
     return ix.reply("🔴 Ticket fermé.");
   }
   if (!ix.isStaff) return ix.reply(NO_PERM);
-  if (isClaim) {
-    await desk.claim(t.id, { id: ix.userId, name: ix.userName });
-    return ix.reply("🟡 Tu as pris ce ticket en charge.");
-  }
   await desk.reopen(t.id, ix.userName);
   return ix.reply("🟢 Ticket rouvert.");
 }

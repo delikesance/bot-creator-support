@@ -58,18 +58,6 @@ export class SupportDesk {
     return ticket;
   }
 
-  async claim(id: number, by: Actor): Promise<Ticket> {
-    const t = this.tickets.claim(id, by);
-    await this.notify(t, `🟡 Ticket pris en charge par **${by.name}**.`, undefined, "🟡 Ton ticket est pris en charge, l'équipe te répond ici.");
-    return t;
-  }
-
-  async release(id: number, by: string): Promise<Ticket> {
-    const t = this.tickets.release(id);
-    await this.notify(t, `🟢 Ticket remis en file d'attente par **${by}**.`, undefined, null);
-    return t;
-  }
-
   async close(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.close(id);
     await this.gw.setUserLocked(t.channelId, t.userId, true).catch(() => {});
@@ -100,6 +88,7 @@ export class SupportDesk {
     if (!text) throw new TicketError("Le message est vide.");
     // Côté Discord, le message apparaît sous le pseudo et l'avatar de l'admin (webhook du salon).
     await this.gw.send(t.channelId, text, { as: { name: authorName, avatarUrl } });
+    this.autoClaim(t, authorName);
     this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel" });
   }
 
@@ -107,7 +96,16 @@ export class SupportDesk {
   recordDiscordMessage(channelId: string, author: Actor, content: string): void {
     const t = this.tickets.getByChannel(channelId);
     if (!t || !content.trim()) return;
+    if (author.id !== t.userId) this.autoClaim(t, author.name);
     this.tickets.addMessage(t.id, { authorId: author.id, authorName: author.name, content, source: "discord" });
+  }
+
+  /** Premier membre du support qui répond : le ticket passe « en cours » à son nom, sans rien écrire sur Discord. */
+  private autoClaim(t: Ticket, by: string) {
+    const current = this.tickets.get(t.id);
+    if (current?.status !== "open") return;
+    this.tickets.claim(t.id, { id: "support", name: by });
+    this.tickets.addMessage(t.id, { authorId: "system", authorName: "Système", content: `🟡 Pris en charge par **${by}**.`, source: "system" });
   }
 
   private assertQuota(guildId: string, userId: string) {

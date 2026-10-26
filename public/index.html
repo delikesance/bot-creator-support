@@ -197,8 +197,8 @@
 <div id="app"></div>
 <script>
 const STATUS = {
-  open:        { label:"Ouvert",   color:"#A78BFA", hint:"En attente d'une réponse" },
-  in_progress: { label:"En cours", color:"#FFB86B", hint:"Pris en charge par l'équipe" },
+  open:        { label:"Ouvert",   color:"#A78BFA", hint:"Personne n'a encore répondu" },
+  in_progress: { label:"En cours", color:"#FFB86B", hint:"Le support a répondu" },
   closed:      { label:"Fermé",    color:"#AEACA8", hint:"Résolus" },
 };
 const TABS = [["", "Tous"], ["open", "Ouverts"], ["in_progress", "En cours"], ["closed", "Fermés"]];
@@ -474,8 +474,6 @@ function renderDetail() {
     return b;
   };
   const buttons = [];
-  if (t.status === "open") buttons.push(act("Prendre en charge", "claim", "hero"));
-  if (t.status === "in_progress") buttons.push(act("Remettre en attente", "release"));
   if (t.status !== "closed") buttons.push(act("Fermer le ticket", "close", "caution"));
   if (t.status === "closed") buttons.push(act("Rouvrir", "reopen", "hero"), act("Supprimer le salon", "delete", "caution"));
 

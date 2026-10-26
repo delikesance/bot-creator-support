@@ -65,7 +65,7 @@ describe("tickets", () => {
   test("liste + stats + filtre par statut", async () => {
     const a = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     await desk.open({ userId: "v", guildId: "g1", userName: "bob", subject: "b" });
-    await desk.claim(a.id, { id: "x", name: "admin" });
+    await desk.reply(a.id, "Bonjour", "admin");
     const all = await (await authed("/api/tickets")).json();
     expect(all.tickets).toHaveLength(2);
     expect(all.stats).toEqual({ open: 1, in_progress: 1, closed: 0 });
@@ -82,11 +82,9 @@ describe("tickets", () => {
     expect(Array.isArray(d.messages)).toBe(true);
     expect((await authed("/api/tickets/999")).status).toBe(404);
   });
-  test("claim / release / close / reopen", async () => {
+  test("close / reopen", async () => {
     const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const post = (a: string) => authed(`/api/tickets/${t.id}/${a}`, { method: "POST" });
-    expect((await (await post("claim")).json()).ticket.status).toBe("in_progress");
-    expect((await (await post("release")).json()).ticket.status).toBe("open");
     expect((await (await post("close")).json()).ticket.status).toBe("closed");
     expect((await (await post("reopen")).json()).ticket.status).toBe("open");
   });

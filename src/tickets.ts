@@ -188,12 +188,6 @@ export class TicketService {
     return this.update(id, "in_progress", by.name, null);
   }
 
-  release(id: number): Ticket {
-    const t = this.require(id);
-    if (t.status !== "in_progress") throw new TicketError("Ce ticket n'est pas en cours.");
-    return this.update(id, "open", null, null);
-  }
-
   close(id: number): Ticket {
     const t = this.require(id);
     if (t.status === "closed") throw new TicketError("Ce ticket est déjà fermé.");

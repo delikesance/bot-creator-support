@@ -66,13 +66,6 @@ describe("transitions", () => {
     expect(() => svc.reopen(t.id)).toThrow(TicketError);
   });
 
-  test("release : in_progress -> open", () => {
-    const t = svc.create(base);
-    svc.claim(t.id, { id: "a1", name: "admin" });
-    const r = svc.release(t.id);
-    expect(r.status).toBe("open");
-    expect(r.assignee).toBeNull();
-  });
 
   test("ticket inconnu", () => {
     expect(() => svc.close(999)).toThrow(/introuvable/);

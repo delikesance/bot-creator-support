@@ -138,10 +138,11 @@ describe("avec OAuth actif", () => {
     expect(me.avatarUrl).toBe("https://cdn.test/angelo.png");
   });
 
-  test("la prise en charge est attribuée à l'admin", async () => {
+  test("répondre prend en charge automatiquement, attribué à l'admin", async () => {
     const c = await session();
     const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
-    await handle(new Request(`http://x/api/tickets/${t.id}/claim`, { method: "POST", headers: { cookie: c } }));
+    await handle(new Request(`http://x/api/tickets/${t.id}/reply`, { method: "POST", headers: { cookie: c }, body: JSON.stringify({ content: "Salut" }) }));
+    expect(desk.tickets.get(t.id)!.status).toBe("in_progress");
     expect(desk.tickets.get(t.id)!.assignee).toBe("Angelo");
   });
 

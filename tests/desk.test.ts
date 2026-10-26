@@ -85,15 +85,6 @@ describe("réponses du panel", () => {
 });
 
 describe("cycle de vie", () => {
-  test("claim -> in_progress et notifie", async () => {
-    const t = await desk.open({ ...user, subject: "a" });
-    const c = await desk.claim(t.id, { id: "a1", name: "admin" });
-    expect(c.status).toBe("in_progress");
-    // L'utilisateur voit un message neutre, sans le nom de l'admin ; l'historique du panel le garde.
-    expect(gw.sent.at(-1)!.text).toContain("pris en charge");
-    expect(gw.sent.at(-1)!.text).not.toContain("admin");
-    expect(desk.tickets.messages(t.id).at(-1)!.content).toContain("admin");
-  });
 
   test("close verrouille l'utilisateur et notifie", async () => {
     const t = await desk.open({ ...user, subject: "a" });
