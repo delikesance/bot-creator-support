@@ -5,8 +5,11 @@ import { TicketService } from "./tickets";
 import { DiscordGateway, startBot } from "./bot/discord";
 import { DiscordOAuth, fetchApplicationOwners } from "./oauth";
 import { createHandler } from "./web";
+import { persistedSessionSecret } from "./session-secret";
 
-const cfg = loadConfig(process.env);
+const loaded = loadConfig(process.env);
+// SESSION_SECRET dans l'environnement l'emporte ; sinon un secret conservé dans le volume de données.
+const cfg = { ...loaded, sessionSecret: process.env.SESSION_SECRET || persistedSessionSecret(loaded.dbPath) };
 const tickets = new TicketService(openDb(cfg.dbPath));
 
 // Le desk a besoin de la gateway, la gateway du client Discord : on branche via un proxy paresseux.
