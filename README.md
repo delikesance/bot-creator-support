@@ -63,6 +63,7 @@ Le bot demande l'intent privilégié **Message Content** (portail développeur D
 | `PANEL_PASSWORD` | Mode sans OAuth : mot de passe du panel (généré et affiché au démarrage si absent) |
 | `SUPPORT_ROLE_ID` | Optionnel : rôle staff qui voit les tickets |
 | `TICKET_CATEGORY_ID` | Optionnel : catégorie par défaut, utilisée tant qu'un serveur n'a pas choisi la sienne avec `/setup category:` |
+| `SESSION_SECRET` | Optionnel : secret de signature des sessions. Absent, il est généré une fois et conservé dans `session-secret` à côté de la base (volume `/data`), donc les connexions survivent aux redémarrages et aux déploiements |
 | `ATTACHMENTS_DIR` | Dossier des pièces jointes (défaut : `attachments` à côté de la base ; `/data/attachments` dans Docker) |
 
 ### Connexion Discord (OAuth2)
