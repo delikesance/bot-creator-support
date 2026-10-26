@@ -86,6 +86,19 @@ Ou en local avec Compose (volume `tickets-data` pour la base SQLite) :
 docker compose up -d --build
 ```
 
+### Mise à jour automatique en production
+
+À chaque push sur `master`, la CI publie l'image (`latest` et `sha-<commit>`), puis le job `deploy` se connecte au serveur en SSH et lance `deploy/deploy-support` avec le tag du commit. Le script télécharge l'image, redémarre le bot, attend que son contrôle de santé (`/health`) passe, et **revient à l'image précédente** si ce n'est pas le cas. Les données (`/data`) ne sont pas touchées.
+
+Installation unique sur le serveur :
+
+1. Copier `deploy/deploy-support` dans `/usr/local/bin/` (`chmod 755`).
+2. Dans `docker-compose.yml`, utiliser `image: ghcr.io/delikesance/bot-creator-support:${SUPPORT_TAG:-latest}` (le script écrit `SUPPORT_TAG` dans `.env`). Adapter `DIR` et `CONTAINER` en tête du script si le dossier ou le nom du conteneur diffèrent.
+3. Créer une clé dédiée (`ssh-keygen -t ed25519`) et ajouter sa partie publique aux `authorized_keys` du serveur avec `restrict,command="/usr/local/bin/deploy-support"` devant : cette clé ne peut rien faire d'autre que déployer.
+4. Secrets du dépôt GitHub : `DEPLOY_HOST` (adresse du serveur), `DEPLOY_KEY` (clé privée), `DEPLOY_KNOWN_HOSTS` (ligne du serveur dans `known_hosts`, obtenue avec `ssh-keyscan`).
+
+Déploiement manuel ou retour arrière : `ssh root@serveur sha-1a2b3c4` (n'importe quel tag publié ; sans argument, `latest`).
+
 Derrière un reverse proxy, désactiver la mise en mémoire tampon pour `/api/events` (flux temps réel). Ne jamais mettre `.env` dans l'image : il se passe à l'exécution.
 
 ## Tests
