@@ -154,7 +154,9 @@ function dropdown(id, trigger, items, { cls = "chip", right = false, label, titl
     items.map((it) => {
       if (it.heading) return h("div", { class: "eyebrow" }, it.heading);
       if (it.sep) return h("hr");
-      return h("button", { class: "opt " + (it.cls ?? ""), type: "button", role: it.checked === undefined ? "menuitem" : "menuitemradio", "aria-checked": it.checked === undefined ? null : String(!!it.checked),
+      if (it.info) return h("div", { class: "menu-info" }, it.info);
+      const role = it.toggle !== undefined ? "menuitemcheckbox" : it.checked === undefined ? "menuitem" : "menuitemradio";
+      return h("button", { class: "opt " + (it.cls ?? ""), type: "button", role, "aria-checked": role === "menuitem" ? null : String(!!(it.toggle ?? it.checked)),
         onclick: () => { closePop(false); it.onpick?.(); } }, it.lead ?? null, h("span", { class: "grow truncate" }, it.label), it.small ? h("small", {}, it.small) : null, it.trail ?? null);
     })) : null;
   return h("div", { class: "pop" }, btn, menu);
@@ -189,7 +191,8 @@ function guildIcon(g) {
 function guildPicker() {
   const cur = state.guilds.find((g) => g.id === state.guild);
   if (!cur) return h("span", { class: "eyebrow" }, "No server");
-  if (state.guilds.length === 1) return h("div", { class: "btn guild-btn static", title: "Server" }, guildIcon(cur), h("span", { class: "truncate" }, cur.name));
+  // One server: nothing to choose, so a plain label rather than something that looks clickable.
+  if (state.guilds.length === 1) return h("span", { class: "guild-name" }, guildIcon(cur), h("span", { class: "truncate" }, cur.name));
   const others = state.guilds.filter((g) => g.id !== cur.id).reduce((n, g) => n + g.stats.open, 0);
   return dropdown("guild", [guildIcon(cur), h("span", { class: "truncate" }, cur.name),
     others ? h("span", { class: "gcount", title: `${others} open ticket${others === 1 ? "" : "s"} on other servers` }, String(others)) : null,
@@ -203,17 +206,24 @@ function guildPicker() {
 
 function renderHeader() {
   const me = state.me;
-  const av = h("span", { class: "avatar accent", style: "--s:36px" }, me?.avatarUrl ? h("img", { src: me.avatarUrl, alt: "", referrerpolicy: "no-referrer" }) : initials(me?.name ?? "?"));
-  const bell = h("button", { class: "btn icon ghost bell", type: "button", "aria-label": "Desktop notifications", "aria-pressed": String(state.notify), title: state.notify ? "Notifications on" : "Notifications off", onclick: toggleNotify }, icon("bell"));
+  const status = state.online ? "Live, connected" : "Offline";
+  const av = h("span", { class: "avatar", style: "--s:36px" }, me?.avatarUrl ? h("img", { src: me.avatarUrl, alt: "", referrerpolicy: "no-referrer" }) : initials(me?.name ?? "?"),
+    h("span", { class: "status-sq" + (state.online ? "" : " off"), "aria-hidden": "true" }));
   shell.head.replaceChildren(...[
     h("a", { class: "brand", href: "#", onclick: (e) => { e.preventDefault(); closeTicket(); }, "aria-label": "Support desk, back to the inbox" }, bibi("idle", 28), h("span", {}, "Support"), h("span", { class: "eyebrow" }, "Desk")),
+    h("span", { class: "hsep", "aria-hidden": "true" }),
     guildPicker(), shell.field, h("div", { class: "spacer" }),
-    h("span", { class: "live" + (state.online ? "" : " off"), role: "status" }, h("span", { class: "sq" }), h("span", {}, state.online ? "LIVE" : "OFFLINE")),
-    bell,
+    // The connection only gets a word when something is wrong; otherwise it is the square on the avatar.
+    state.online ? null : h("span", { class: "conn-lost", role: "status" }, h("span", { class: "sq" }), "Connection lost. Reconnecting…"),
     me ? dropdown("me", av, [
       { heading: me.name },
+      { info: h("span", { class: "menu-status" }, h("span", { class: "sq", style: `--c:${state.online ? "var(--accent)" : "var(--danger)"}` }), status) },
+      { sep: true },
+      { label: "Desktop notifications", lead: icon("bell", 16), toggle: state.notify, trail: h("span", { class: "switch" + (state.notify ? " on" : ""), "aria-hidden": "true" }, h("span")), onpick: toggleNotify },
+      { label: "Keyboard shortcuts", lead: icon("keys", 16), trail: h("span", { class: "kbd", "aria-hidden": "true" }, "?"), onpick: showShortcuts },
+      { sep: true },
       { label: "Sign out", lead: icon("out", 16), onpick: logout },
-    ], { cls: "me-btn", right: true, label: `Account menu, ${me.name}` }) : null].filter(Boolean));
+    ], { cls: "me-btn", right: true, label: `Account menu, ${me.name}. ${status}` }) : null].filter(Boolean));
 }
 
 async function logout() { await post("/logout").catch(() => {}); state.me = null; renderLogin(); }
@@ -848,8 +858,7 @@ async function refresh(force = false) {
   } catch (e) {
     if (e.message === "auth") return;
     state.online = false;
-    document.querySelector(".live")?.classList.add("off");
-    document.querySelector(".live span:last-child") && (document.querySelector(".live span:last-child").textContent = "OFFLINE");
+    renderHeader();
   }
 }
 
