@@ -8,7 +8,7 @@ Un bot Discord qui transforme chaque demande en **ticket privé**, et un **panel
 
 ## Comment ça marche
 
-1. Un membre tape `/ticket` ou clique sur le bouton du message posté par `/setup` (toujours en anglais, avec une bannière). Une fenêtre lui demande un **titre** et une **description détaillée**.
+1. Un admin tape `/setup` dans le salon voulu, avec l'option facultative **`category`** : les salons de support de ce serveur seront créés dans cette catégorie (réglage par serveur, conservé si l'option est omise ; si la catégorie est supprimée, le salon est créé à la racine). Un membre tape ensuite `/ticket` ou clique sur le bouton du message posté par `/setup` (toujours en anglais, avec une bannière). Une fenêtre lui demande un **titre** et une **description détaillée**.
 2. Le bot crée un salon privé (visible par l'utilisateur, le bot et le rôle support) et y poste un message d'accueil sous forme d'embed, qui mentionne l'utilisateur.
 3. Le support répond depuis le **panel**, avec des fichiers si besoin. Le message apparaît dans le salon sous le pseudo et l'avatar Discord de la personne qui répond (webhook). Répondre directement dans le salon marche aussi : tout est historisé dans le panel, pièces jointes du client comprises (elles sont téléchargées et conservées, car les liens Discord expirent).
 4. Le ticket se ferme depuis le panel (ou par `/close`) avec un motif, un message d'adieu optionnel, une demande de note de 1 à 5 et l'envoi de la transcription. Le client ne peut plus écrire. Le ticket peut être rouvert, et son salon supprimé une fois fermé.
@@ -61,7 +61,8 @@ Le bot demande l'intent privilégié **Message Content** (portail développeur D
 | `PUBLIC_URL` | Adresse du panel (défaut `http://localhost:PORT`) ; la redirection OAuth2 est `PUBLIC_URL/auth/callback` |
 | `ADMIN_IDS` | Super-admins (tous les serveurs), IDs séparés par des virgules (vide = propriétaire de l'application) |
 | `PANEL_PASSWORD` | Mode sans OAuth : mot de passe du panel (généré et affiché au démarrage si absent) |
-| `SUPPORT_ROLE_ID`, `TICKET_CATEGORY_ID` | Optionnels : rôle staff et catégorie des salons |
+| `SUPPORT_ROLE_ID` | Optionnel : rôle staff qui voit les tickets |
+| `TICKET_CATEGORY_ID` | Optionnel : catégorie par défaut, utilisée tant qu'un serveur n'a pas choisi la sienne avec `/setup category:` |
 | `ATTACHMENTS_DIR` | Dossier des pièces jointes (défaut : `attachments` à côté de la base ; `/data/attachments` dans Docker) |
 
 ### Connexion Discord (OAuth2)

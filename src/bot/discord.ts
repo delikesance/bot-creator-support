@@ -70,7 +70,7 @@ export class DiscordGateway implements Gateway {
     return c;
   }
 
-  async createTicketChannel(o: { guildId: string; userId: string; userName: string }): Promise<string> {
+  async createTicketChannel(o: { guildId: string; userId: string; userName: string; categoryId?: string | null }): Promise<string> {
     const guild = await this.guild(o.guildId);
     const allow = [
       PermissionFlagsBits.ViewChannel,
@@ -85,12 +85,19 @@ export class DiscordGateway implements Gateway {
     if (this.cfg.supportRoleId) overwrites.push({ id: this.cfg.supportRoleId, allow });
     const slug =
       o.userName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "user";
-    const ch = await guild.channels.create({
-      name: `ticket-${slug}`,
-      type: ChannelType.GuildText,
-      parent: this.cfg.categoryId ?? undefined,
-      permissionOverwrites: overwrites,
-    });
+    const create = (parent?: string) =>
+      guild.channels.create({ name: `ticket-${slug}`, type: ChannelType.GuildText, parent, permissionOverwrites: overwrites });
+    // Catégorie du serveur (réglée avec /setup), sinon TICKET_CATEGORY_ID. Si elle a été supprimée ou si le bot n'y a
+    // plus accès, le ticket s'ouvre quand même, à la racine, plutôt que d'échouer pour le client.
+    const parent = o.categoryId ?? this.cfg.categoryId ?? undefined;
+    let ch;
+    try {
+      ch = await create(parent);
+    } catch (e) {
+      if (!parent) throw e;
+      console.warn(`Category ${parent} unavailable in ${o.guildId}, creating the channel without it:`, (e as Error).message);
+      ch = await create();
+    }
     return ch.id;
   }
 
@@ -181,6 +188,10 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     isStaff: !!i.memberPermissions?.has(PermissionFlagsBits.ManageChannels) || hasRole,
     subject: i.isModalSubmit() ? i.fields.getTextInputValue("subject") : undefined,
     description: i.isModalSubmit() ? i.fields.getTextInputValue("description") : undefined,
+    category: (() => {
+      const c = i.isChatInputCommand() ? i.options.getChannel("category") : null;
+      return c ? { id: c.id, name: "name" in c && c.name ? c.name : c.id } : undefined;
+    })(),
     reply,
     showSubjectModal: async () => {
       if (i.isChatInputCommand() || i.isButton()) {
@@ -212,7 +223,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
         );
       }
     },
-    postPanel: async () => {
+    postPanel: async (confirmation: string) => {
       const ch = i.channel;
       // Le panneau est public et toujours en anglais (ni langue du serveur ni celle de l'admin) ; seule la confirmation suit l'admin.
       if (ch && "send" in ch) {
@@ -224,7 +235,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
           ],
         });
       }
-      await reply(pack(i.locale).panelPosted);
+      await reply(confirmation);
     },
   };
 }
