@@ -1,4 +1,5 @@
-import { TicketError, TicketService, type NewAttachment, type Ticket, type TicketMessage } from "./tickets";
+import { TicketError, TicketService, type CloseReason, type NewAttachment, type Ticket, type TicketMessage } from "./tickets";
+import { buildTranscript } from "./transcript";
 import { pack, quotaText, welcomeText } from "./i18n";
 import { downloadFile } from "./bot/download";
 import { MAX_FILE_BYTES, storeFile, validateBatch, validateFile } from "./storage";
@@ -26,6 +27,17 @@ export interface Gateway {
   ): Promise<void>;
   setUserLocked(channelId: string, userId: string, locked: boolean): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
+  /** Poste dans le salon la demande de note (boutons de 1 à 5) dans la langue du client. */
+  askRating?(channelId: string, ticketId: number, locale?: string): Promise<void>;
+}
+
+/** Options de fermeture depuis le panel (toutes facultatives : sans elles, la fermeture reste celle d'avant). */
+export interface CloseOptions {
+  reason?: CloseReason;
+  /** Message d'adieu posté tel quel ; par défaut, la phrase localisée du ticket. */
+  message?: string;
+  askRating?: boolean;
+  sendTranscript?: boolean;
 }
 
 export interface Actor {
@@ -103,25 +115,83 @@ export class SupportDesk {
     return ticket;
   }
 
-  async close(id: number, by: string): Promise<Ticket> {
-    const t = this.tickets.close(id);
+  async close(id: number, by: string, o: CloseOptions = {}): Promise<Ticket> {
+    const custom = o.message?.trim() || undefined;
+    if (custom && custom.length > MAX_MESSAGE) throw new TicketError(`Le message dépasse ${MAX_MESSAGE} caractères.`);
+    const t = this.tickets.close(id, { reason: o.reason, actor: by });
     await this.gw.setUserLocked(t.channelId, t.userId, true).catch(() => {});
-    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, undefined, pack(t.locale).noticeClosed);
-    return t;
+    // Un message d'adieu personnalisé est un vrai message du support : il figure dans la conversation.
+    if (custom) this.tickets.addMessage(id, { authorId: "panel", authorName: by, content: custom, source: "panel" });
+    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, undefined, custom ?? pack(t.locale).noticeClosed, "closed");
+    if (o.sendTranscript) {
+      const data = new TextEncoder().encode(buildTranscript(this.tickets.get(id)!, this.tickets.messages(id)));
+      await this.gw.send(t.channelId, pack(t.locale).transcriptText, { files: [{ name: `transcript-${id}.txt`, data }] }).catch(() => {});
+    }
+    if (o.askRating) await this.gw.askRating?.(t.channelId, id, t.locale).catch(() => {});
+    return this.tickets.get(id)!;
+  }
+
+  /** Note du client (bouton posté à la fermeture) : seul l'auteur du ticket peut noter, une fois, ticket fermé. */
+  async rate(ticketId: number, userId: string, rating: number): Promise<Ticket> {
+    const t = this.tickets.get(ticketId);
+    if (!t || t.userId !== userId) throw new TicketError(`Ticket #${ticketId} introuvable.`);
+    return this.tickets.setRating(ticketId, rating);
+  }
+
+  /** Transcription texte des messages publics, pour le téléchargement depuis le panel. */
+  transcript(id: number): string {
+    const t = this.tickets.get(id);
+    if (!t) throw new TicketError(`Ticket #${id} introuvable.`);
+    return buildTranscript(t, this.tickets.messages(id));
   }
 
   async reopen(id: number, by: string): Promise<Ticket> {
-    const t = this.tickets.reopen(id);
+    const t = this.tickets.reopen(id, by);
     await this.gw.setUserLocked(t.channelId, t.userId, false).catch(() => {});
     await this.notify(t, `🟢 Ticket rouvert par **${by}**.`, undefined, pack(t.locale).noticeReopened);
     return t;
   }
 
-  async deleteChannel(id: number): Promise<void> {
+  async deleteChannel(id: number, by = "system"): Promise<void> {
     const t = this.tickets.get(id);
     if (!t) throw new TicketError(`Ticket #${id} introuvable.`);
     if (t.status !== "closed") throw new TicketError("Ferme le ticket avant de supprimer le salon.");
     await this.gw.deleteChannel(t.channelId);
+    this.tickets.log(id, by, "delete_channel", t.channelId);
+  }
+
+  /** Attribue le ticket (ou le libère avec null). `userId` : identifiant Discord si c'est l'appelant, sinon null. */
+  assign(id: number, name: string | null, by: string, userId: string | null): Ticket {
+    const t = this.tickets.assign(id, name, userId, by);
+    this.addSystemNote(id, name ? `🟡 Assigné à **${name}** par **${by}**.` : `⚪ Ticket libéré par **${by}**.`);
+    return t;
+  }
+
+  private addSystemNote(id: number, content: string) {
+    this.tickets.addMessage(id, { authorId: "system", authorName: "Système", content, source: "system" });
+  }
+
+  /** Note interne : visible du support seulement, jamais envoyée sur Discord, ne change ni l'attente ni l'attribution. */
+  async note(id: number, content: string, by: string, files: OutFile[] = []): Promise<TicketMessage> {
+    if (!this.tickets.get(id)) throw new TicketError(`Ticket #${id} introuvable.`);
+    const text = content.trim();
+    if (!text && !files.length) throw new TicketError("La note est vide.");
+    const stored = await this.storeAll(files);
+    const m = this.tickets.addMessage(id, { authorId: "panel", authorName: by, content: text, source: "panel", internal: true, attachments: stored });
+    this.tickets.log(id, by, "note", "");
+    return m;
+  }
+
+  /** Valide puis écrit les fichiers ; rien n'est écrit si l'un d'eux est refusé. */
+  private async storeAll(files: OutFile[]): Promise<NewAttachment[]> {
+    const valid = validateBatch(files);
+    const dir = this.opts.attachmentsDir;
+    if (files.length && !dir) throw new TicketError("Le stockage des pièces jointes n'est pas configuré.");
+    const stored: NewAttachment[] = [];
+    for (const [i, v] of valid.entries()) {
+      stored.push({ name: v.name, mime: v.mime, size: v.size, file: await storeFile(dir!, files[i]!.data, v.ext) });
+    }
+    return stored;
   }
 
   /** Réponse envoyée depuis le panel : postée par le bot dans le salon. */
@@ -133,15 +203,11 @@ export class SupportDesk {
     if (!text && !files.length) throw new TicketError("Le message est vide.");
     if (text.length > MAX_MESSAGE) throw new TicketError(`Le message dépasse ${MAX_MESSAGE} caractères.`);
     // Validation avant tout envoi : un fichier refusé n'envoie rien (ni texte ni autres fichiers).
-    const valid = validateBatch(files);
-    const dir = this.opts.attachmentsDir;
-    if (files.length && !dir) throw new TicketError("Le stockage des pièces jointes n'est pas configuré.");
+    validateBatch(files);
+    if (files.length && !this.opts.attachmentsDir) throw new TicketError("Le stockage des pièces jointes n'est pas configuré.");
     // Côté Discord, le message apparaît sous le pseudo et l'avatar de l'admin (webhook du salon).
     await this.gw.send(t.channelId, text, { as: { name: authorName, avatarUrl }, ...(files.length ? { files } : {}) });
-    const stored: NewAttachment[] = [];
-    for (const [i, v] of valid.entries()) {
-      stored.push({ name: v.name, mime: v.mime, size: v.size, file: await storeFile(dir!, files[i]!.data, v.ext) });
-    }
+    const stored = await this.storeAll(files);
     this.autoClaim(t, authorName);
     return this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel", attachments: stored });
   }
@@ -223,9 +289,10 @@ export class SupportDesk {
   }
 
   /** `shown` : texte visible sur Discord (par défaut celui de l'historique ; null = rien n'est envoyé). */
-  private async notify(t: Ticket, text: string, controls?: "active" | "closed", shown: string | null = text) {
+  private async notify(t: Ticket, text: string, controls?: "active" | "closed", shown: string | null = text, style?: "closed") {
     this.tickets.addMessage(t.id, { authorId: "system", authorName: "Système", content: text, source: "system" });
     if (shown === null) return;
-    await this.gw.send(t.channelId, shown, controls ? { controls } : undefined).catch(() => {});
+    const opts = { ...(controls ? { controls } : {}), ...(style ? { style } : {}) };
+    await this.gw.send(t.channelId, shown, Object.keys(opts).length ? opts : undefined).catch(() => {});
   }
 }

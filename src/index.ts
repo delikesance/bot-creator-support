@@ -16,6 +16,7 @@ const lazy: Gateway = {
   send: (c, t, o) => real!.send(c, t, o),
   setUserLocked: (c, u, l) => real!.setUserLocked(c, u, l),
   deleteChannel: (c) => real!.deleteChannel(c),
+  askRating: (c, t, l) => real!.askRating(c, t, l),
 };
 const desk = new SupportDesk(tickets, lazy, { maxActivePerUser: 1, attachmentsDir: cfg.attachmentsDir });
 

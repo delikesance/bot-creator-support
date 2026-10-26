@@ -31,10 +31,7 @@ export interface Pack {
   cmdTicket: string;
   cmdClose: string;
   cmdSetup: string;
-  /** Fermeture avec demande de note : invite, remerciement, déjà noté ; message accompagnant la transcription. */
-  ratePrompt: string;
-  rateThanks: string;
-  rateDone: string;
+  /** Message accompagnant la transcription envoyée à la fermeture. */
   transcriptText: string;
   /** Demande de note postée à la fermeture (boutons de 1 à 5), remerciement et refus d'une seconde note. */
   ratingPrompt: string;
@@ -70,9 +67,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "How was the support you received? Pick a rating from 1 (poor) to 5 (excellent).",
     ratingThanks: "Thank you for your feedback!",
     ratingDone: "You have already rated this ticket.",
-    ratePrompt: "How was the support you received? Rate it from 1 to 5.",
-    rateThanks: "Thank you for your feedback!",
-    rateDone: "This ticket has already been rated.",
     transcriptText: "Here is the transcript of your ticket.",
   },
   fr: {
@@ -103,9 +97,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Comment s'est passé ton échange avec le support ? Choisis une note de 1 (mauvais) à 5 (excellent).",
     ratingThanks: "Merci pour ton retour !",
     ratingDone: "Tu as déjà noté ce ticket.",
-    ratePrompt: "Comment s'est passé le support ? Note-le de 1 à 5.",
-    rateThanks: "Merci pour ton retour !",
-    rateDone: "Ce ticket a déjà été noté.",
     transcriptText: "Voici la transcription de ton ticket.",
   },
   es: {
@@ -136,9 +127,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "¿Qué tal fue la atención recibida? Elige una nota de 1 (mala) a 5 (excelente).",
     ratingThanks: "¡Gracias por tu opinión!",
     ratingDone: "Ya has valorado este ticket.",
-    ratePrompt: "¿Qué te pareció la atención recibida? Valórala de 1 a 5.",
-    rateThanks: "¡Gracias por tu opinión!",
-    rateDone: "Este ticket ya ha sido valorado.",
     transcriptText: "Aquí tienes la transcripción de tu ticket.",
   },
   de: {
@@ -169,9 +157,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Wie war der Support? Wähle eine Bewertung von 1 (schlecht) bis 5 (ausgezeichnet).",
     ratingThanks: "Danke für dein Feedback!",
     ratingDone: "Du hast dieses Ticket bereits bewertet.",
-    ratePrompt: "Wie war der Support? Bewerte ihn von 1 bis 5.",
-    rateThanks: "Danke für dein Feedback!",
-    rateDone: "Dieses Ticket wurde bereits bewertet.",
     transcriptText: "Hier ist das Transkript deines Tickets.",
   },
   pt: {
@@ -202,9 +187,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Como foi o atendimento? Escolha uma nota de 1 (ruim) a 5 (excelente).",
     ratingThanks: "Obrigado pelo seu feedback!",
     ratingDone: "Você já avaliou este ticket.",
-    ratePrompt: "Como foi o suporte que você recebeu? Avalie de 1 a 5.",
-    rateThanks: "Obrigado pelo seu feedback!",
-    rateDone: "Este ticket já foi avaliado.",
     transcriptText: "Aqui está a transcrição do seu ticket.",
   },
   it: {
@@ -235,9 +217,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Com'è andata con il supporto? Scegli un voto da 1 (scarso) a 5 (eccellente).",
     ratingThanks: "Grazie per il tuo feedback!",
     ratingDone: "Hai già valutato questo ticket.",
-    ratePrompt: "Com'è stata l'assistenza ricevuta? Valutala da 1 a 5.",
-    rateThanks: "Grazie per il tuo feedback!",
-    rateDone: "Questo ticket è già stato valutato.",
     transcriptText: "Ecco la trascrizione del tuo ticket.",
   },
   nl: {
@@ -268,9 +247,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Hoe was de ondersteuning? Kies een cijfer van 1 (slecht) tot 5 (uitstekend).",
     ratingThanks: "Bedankt voor je feedback!",
     ratingDone: "Je hebt dit ticket al beoordeeld.",
-    ratePrompt: "Hoe was de ondersteuning? Beoordeel van 1 tot 5.",
-    rateThanks: "Bedankt voor je feedback!",
-    rateDone: "Dit ticket is al beoordeeld.",
     transcriptText: "Hier is het transcript van je ticket.",
   },
   pl: {
@@ -301,9 +277,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Jak oceniasz pomoc? Wybierz ocenę od 1 (słabo) do 5 (doskonale).",
     ratingThanks: "Dziękujemy za opinię!",
     ratingDone: "Ten ticket został już oceniony.",
-    ratePrompt: "Jak oceniasz otrzymane wsparcie? Oceń od 1 do 5.",
-    rateThanks: "Dziękujemy za opinię!",
-    rateDone: "To zgłoszenie zostało już ocenione.",
     transcriptText: "Oto transkrypcja Twojego zgłoszenia.",
   },
   ru: {
@@ -334,9 +307,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Как вам поддержка? Выберите оценку от 1 (плохо) до 5 (отлично).",
     ratingThanks: "Спасибо за отзыв!",
     ratingDone: "Вы уже оценили это обращение.",
-    ratePrompt: "Как вам поддержка? Оцените от 1 до 5.",
-    rateThanks: "Спасибо за отзыв!",
-    rateDone: "Это обращение уже оценено.",
     transcriptText: "Вот расшифровка вашего обращения.",
   },
   tr: {
@@ -367,9 +337,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "Destek nasıldı? 1 (kötü) ile 5 (mükemmel) arasında bir puan seç.",
     ratingThanks: "Geri bildirimin için teşekkürler!",
     ratingDone: "Bu bileti zaten puanladın.",
-    ratePrompt: "Aldığın destek nasıldı? 1 ile 5 arasında puan ver.",
-    rateThanks: "Geri bildirimin için teşekkürler!",
-    rateDone: "Bu bilet zaten puanlandı.",
     transcriptText: "Biletinin dökümü burada.",
   },
   ja: {
@@ -399,9 +366,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "サポートはいかがでしたか？1（悪い）から5（とても良い）で評価してください。",
     ratingThanks: "ご意見ありがとうございます！",
     ratingDone: "このチケットはすでに評価済みです。",
-    ratePrompt: "サポートはいかがでしたか？1〜5で評価してください。",
-    rateThanks: "ご意見ありがとうございます！",
-    rateDone: "このチケットはすでに評価済みです。",
     transcriptText: "チケットの記録はこちらです。",
   },
   ko: {
@@ -431,9 +395,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "지원은 어떠셨나요? 1(나쁨)에서 5(매우 좋음) 중에서 선택해 주세요.",
     ratingThanks: "의견 감사합니다!",
     ratingDone: "이미 이 티켓을 평가하셨습니다.",
-    ratePrompt: "받은 지원은 어땠나요? 1~5점으로 평가해 주세요.",
-    rateThanks: "의견 주셔서 감사합니다!",
-    rateDone: "이 티켓은 이미 평가되었습니다.",
     transcriptText: "티켓 대화 기록입니다.",
   },
   zh: {
@@ -463,9 +424,6 @@ const PACKS: Record<string, Pack> = {
     ratingPrompt: "本次支持体验如何？请在 1（差）到 5（非常好）之间打分。",
     ratingThanks: "感谢你的反馈！",
     ratingDone: "你已经评价过这个工单了。",
-    ratePrompt: "您对获得的支持满意吗？请评分，1 到 5 分。",
-    rateThanks: "感谢您的反馈！",
-    rateDone: "此工单已评价过。",
     transcriptText: "这是您的工单记录。",
   },
 };
