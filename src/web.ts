@@ -2,11 +2,16 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join, resolve, sep } from "node:path";
 import type { SupportDesk } from "./desk";
 import type { OAuthProvider } from "./oauth";
-import { TicketError, type Status } from "./tickets";
+import { TicketError, type Awaiting, type CloseReason, type Priority, type Status } from "./tickets";
 import { AttachmentError, MAX_REQUEST_BYTES, openStored } from "./storage";
 import { unfurl as defaultUnfurl, type Preview } from "./unfurl";
 
 const STATUSES: Status[] = ["open", "in_progress", "closed"];
+const AWAITING: Awaiting[] = ["support", "customer"];
+const PRIORITIES: Priority[] = ["low", "normal", "high", "urgent"];
+const CLOSE_REASONS: CloseReason[] = ["resolved", "no_reply", "duplicate", "other"];
+const MAX_QUERY = 200;
+const MAX_NAME = 80;
 const SESSION_TTL_MS = 12 * 3600_000;
 const STATE_TTL_S = 600;
 const PUBLIC_DIR = resolve(import.meta.dir, "..", "public");
@@ -194,6 +199,12 @@ export function createHandler(
     });
   }
 
+  /** Corps JSON facultatif : un corps absent ou illisible donne un objet vide. */
+  async function readJson(req: Request): Promise<Record<string, unknown>> {
+    const b = await req.json().catch(() => null);
+    return b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
+  }
+
   /** Corps d'une réponse : JSON ou multipart (content + files). */
   async function readReply(req: Request): Promise<{ content: string; files: { name: string; data: Uint8Array }[] }> {
     if (!(req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
@@ -257,6 +268,17 @@ export function createHandler(
     /** Un serveur accessible à la session, ou null. */
     const canAccess = (guildId: string) => accessible(session).some((g) => g.id === guildId);
 
+    /** Serveur demandé (paramètre guild, ou l'unique serveur accessible) ; sinon la réponse d'erreur à renvoyer. */
+    const pickGuild = (): string | Response => {
+      let guildId = url.searchParams.get("guild");
+      if (!guildId) {
+        const all = accessible(session);
+        if (all.length !== 1) return json({ error: "Choisis un serveur (paramètre guild)." }, 400);
+        guildId = all[0]!.id;
+      }
+      return canAccess(guildId) ? guildId : json({ error: "Accès refusé à ce serveur." }, 403);
+    };
+
     if (path === "/api/events" && req.method === "GET") {
       const guildId = url.searchParams.get("guild") ?? "";
       if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
@@ -316,20 +338,71 @@ export function createHandler(
       }
 
       if (path === "/api/tickets" && req.method === "GET") {
-        const status = url.searchParams.get("status");
+        const param = (k: string) => url.searchParams.get(k)?.trim() || undefined;
+        const status = param("status");
         if (status && !STATUSES.includes(status as Status)) return json({ error: "Statut invalide." }, 400);
-        let guildId = url.searchParams.get("guild");
-        if (!guildId) {
-          const all = accessible(session);
-          if (all.length !== 1) return json({ error: "Choisis un serveur (paramètre guild)." }, 400);
-          guildId = all[0]!.id;
-        }
-        if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
+        const awaiting = param("awaiting");
+        if (awaiting && !AWAITING.includes(awaiting as Awaiting)) return json({ error: "Attente invalide." }, 400);
+        const priority = param("priority");
+        if (priority && !PRIORITIES.includes(priority as Priority)) return json({ error: "Priorité invalide." }, 400);
+        const q = param("q");
+        if (q && q.length > MAX_QUERY) return json({ error: "Recherche trop longue." }, 400);
+        const guildId = pickGuild();
+        if (guildId instanceof Response) return guildId;
         return json({
-          tickets: desk.tickets.list((status as Status) || undefined, guildId),
+          // « me » : le nom de la session, qui correspond aussi aux tickets pris en charge automatiquement.
+          tickets: desk.tickets.find({
+            guildId,
+            status: status as Status | undefined,
+            awaiting: awaiting as Awaiting | undefined,
+            priority: priority as Priority | undefined,
+            assignee: param("assignee"),
+            tag: param("tag"),
+            q,
+            me: session.name,
+          }),
           stats: desk.tickets.stats(guildId),
           awaiting: desk.tickets.awaitingStats(guildId),
+          tags: desk.tickets.tagCounts(guildId),
         });
+      }
+
+      if (path === "/api/metrics" && req.method === "GET") {
+        const guildId = pickGuild();
+        if (guildId instanceof Response) return guildId;
+        const days = Number(url.searchParams.get("days") ?? 7);
+        if (!Number.isInteger(days) || days < 1 || days > 90) return json({ error: "days doit être un entier de 1 à 90." }, 400);
+        return json(desk.tickets.metrics(guildId, days));
+      }
+
+      if (path === "/api/audit" && req.method === "GET") {
+        const id = Number(url.searchParams.get("ticket"));
+        const t = Number.isInteger(id) ? desk.tickets.get(id) : null;
+        if (!t || !canAccess(t.guildId)) return json({ error: "Ticket introuvable." }, 404);
+        return json({ entries: desk.tickets.audit(id) });
+      }
+
+      if (path === "/api/replies" && req.method === "GET") {
+        const guildId = pickGuild();
+        if (guildId instanceof Response) return guildId;
+        return json({ replies: desk.tickets.listReplies(guildId) });
+      }
+      if (path === "/api/replies" && req.method === "POST") {
+        const body = await readJson(req);
+        const guildId = typeof body.guild === "string" ? body.guild : "";
+        if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
+        if (typeof body.name !== "string" || typeof body.text !== "string") return json({ error: "name et text sont requis." }, 400);
+        desk.tickets.saveReply(guildId, body.name.trim(), body.text, session.name);
+        return json({ replies: desk.tickets.listReplies(guildId) });
+      }
+      const rep = /^\/api\/replies\/(\d+)$/.exec(path);
+      if (rep && req.method === "DELETE") {
+        const id = Number(rep[1]);
+        // Le serveur de la réponse se retrouve parmi ceux de la session : une réponse d'un autre serveur est un 404.
+        const guild = accessible(session).find((g) => desk.tickets.listReplies(g.id).some((r) => r.id === id));
+        if (!guild) return json({ error: "Réponse introuvable." }, 404);
+        desk.tickets.deleteReply(id, session.name);
+        return json({ replies: desk.tickets.listReplies(guild.id) });
       }
 
       const m = /^\/api\/tickets\/(\d+)(?:\/(\w+))?$/.exec(path);
@@ -343,16 +416,61 @@ export function createHandler(
           const ticket = owned;
           return json({ ticket, messages: desk.tickets.messages(id) });
         }
+        if (action === "transcript" && req.method === "GET") {
+          return new Response(desk.transcript(id), {
+            headers: {
+              "content-type": "text/plain; charset=utf-8",
+              "content-disposition": `attachment; filename="ticket-${id}.txt"`,
+              "x-content-type-options": "nosniff",
+              "cache-control": "private, no-store",
+            },
+          });
+        }
         if (action && req.method === "POST") {
           const by = session.name;
           switch (action) {
-            case "close":
-              return json({ ticket: await desk.close(id, by) });
+            case "close": {
+              // Corps facultatif : les anciens appelants (sans corps) gardent la fermeture simple.
+              const b = await readJson(req);
+              if (b.reason !== undefined && !CLOSE_REASONS.includes(b.reason as CloseReason)) return json({ error: "Raison de fermeture invalide." }, 400);
+              if (b.message !== undefined && typeof b.message !== "string") return json({ error: "message doit être du texte." }, 400);
+              return json({
+                ticket: await desk.close(id, by, {
+                  reason: b.reason as CloseReason | undefined,
+                  message: b.message as string | undefined,
+                  askRating: b.askRating === true,
+                  sendTranscript: b.sendTranscript === true,
+                }),
+              });
+            }
             case "reopen":
               return json({ ticket: await desk.reopen(id, by) });
             case "delete":
-              await desk.deleteChannel(id);
+              await desk.deleteChannel(id, by);
               return json({ ok: true });
+            case "note": {
+              const { content, files } = await readReply(req);
+              return json({ ok: true, message: await desk.note(id, content, by, files) });
+            }
+            case "assign": {
+              const b = await readJson(req);
+              if (b.assignee !== null && typeof b.assignee !== "string") return json({ error: "assignee doit être un nom ou null." }, 400);
+              const name = typeof b.assignee === "string" ? b.assignee.trim() || null : null;
+              if (name && name.length > MAX_NAME) return json({ error: "Nom trop long." }, 400);
+              // L'identifiant Discord n'est connu que si l'appelant s'attribue le ticket à lui-même.
+              const userId = name !== null && name === session.name && session.id !== "panel" ? session.id : null;
+              return json({ ticket: desk.assign(id, name, by, userId) });
+            }
+            case "priority": {
+              const b = await readJson(req);
+              if (!PRIORITIES.includes(b.priority as Priority)) return json({ error: "Priorité invalide." }, 400);
+              return json({ ticket: desk.tickets.setPriority(id, b.priority as Priority, by) });
+            }
+            case "tags": {
+              const b = await readJson(req);
+              if (!Array.isArray(b.tags) || !b.tags.every((t) => typeof t === "string")) return json({ error: "tags doit être une liste de textes." }, 400);
+              return json({ ticket: desk.tickets.setTags(id, b.tags as string[], by) });
+            }
             case "reply": {
               const { content, files } = await readReply(req);
               const message = await desk.reply(id, content, by, session.avatarUrl, files);
