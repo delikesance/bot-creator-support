@@ -134,6 +134,12 @@
   .msg { max-width:82%; animation:rise .3s var(--ease) both; }
   .msg .who { font-size:12px; color:var(--muted); margin-bottom:4px; }
   .msg .body { background:var(--raised); border:1px solid var(--border); border-radius:2px; padding:10px 14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg .body a { color:var(--accent-ink); text-decoration:underline; text-underline-offset:3px; }
+  .att { display:block; margin-top:8px; }
+  .att:first-child { margin-top:0; }
+  .att img { display:block; max-width:min(100%, 420px); max-height:320px; border:1px solid var(--border); border-radius:2px; background:var(--bg); object-fit:contain; transition:border-color .15s; }
+  .att:hover img { border-color:var(--accent-line); }
+  .att.broken { font-size:13px; color:var(--muted); }
   .msg.panel { align-self:flex-end; } .msg.panel .who { text-align:right; }
   .msg.panel .body { background:var(--accent-deep); border-color:var(--accent-line); box-shadow:3px 3px 0 var(--accent); }
   .msg.system { align-self:center; max-width:100%; font-size:13px; color:var(--muted); display:flex; align-items:center; gap:8px; }
@@ -305,6 +311,36 @@ async function load() {
   }
 }
 
+/* Texte d'un message : liens cliquables, images affichées (construit en DOM, jamais en innerHTML). */
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+const IMG_EXT = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
+function isImage(url) {
+  try { const u = new URL(url); return IMG_EXT.test(u.pathname) || (u.hostname === "media.discordapp.net" && u.pathname.startsWith("/attachments/")); }
+  catch { return false; }
+}
+function renderText(text) {
+  const out = []; const imgs = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const url = m[0].replace(/[).,;!?]+$/, "");
+    out.push(text.slice(last, m.index));
+    last = m.index + url.length;
+    if (isImage(url)) {
+      const img = h("img", { src:url, alt:"Image jointe", loading:"lazy", referrerpolicy:"no-referrer" });
+      const a = h("a", { class:"att", href:url, target:"_blank", rel:"noopener noreferrer", title:"Ouvrir l'image" }, img);
+      img.addEventListener("error", () => { a.classList.add("broken"); a.replaceChildren(document.createTextNode("Image indisponible (lien expiré) : " + url)); });
+      imgs.push(a);
+    } else {
+      out.push(h("a", { href:url, target:"_blank", rel:"noopener noreferrer" }, url));
+    }
+  }
+  out.push(text.slice(last));
+  const rest = out.filter((x) => x !== "");
+  // Message composé uniquement d'images : pas de texte vide autour.
+  const hasText = rest.some((x) => typeof x !== "string" || x.trim());
+  return [...(hasText ? rest : []), ...imgs];
+}
+
 function visibleTickets() {
   const q = state.query.trim().toLowerCase();
   return state.tickets.filter((t) =>
@@ -376,7 +412,7 @@ function renderDetail() {
     const text = m.content.replaceAll("**", "").replace(/^\p{Extended_Pictographic}️?\s*/u, "");
     const fresh = m.id > seen ? " fresh" : "";
     if (m.source === "system") return h("div", { class:"msg system" + fresh }, h("span", { class:"sq", style:`--c:${s.color}` }), text);
-    return h("div", { class:"msg " + m.source + fresh }, h("div", { class:"who" }, `${m.authorName} · ${clock(m.createdAt)}`), h("div", { class:"body" }, text));
+    return h("div", { class:"msg " + m.source + fresh }, h("div", { class:"who" }, `${m.authorName} · ${clock(m.createdAt)}`), h("div", { class:"body" }, ...renderText(text)));
   }));
   // On suit le bas de la conversation, sauf si l'admin relit plus haut dans le même ticket.
   const old = document.querySelector(".msgs");

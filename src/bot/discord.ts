@@ -20,6 +20,7 @@ import {
 import type { Config } from "../config";
 import type { Gateway, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
+import { messageContent } from "./content";
 import { registerCommands } from "./register";
 
 const button = (id: string, label: string, style: ButtonStyle) =>
@@ -222,7 +223,7 @@ export async function startBot(cfg: Config, desk: SupportDesk, makeGateway: (c: 
 
   client.on(Events.MessageCreate, (m) => {
     if (m.author.bot || !m.inGuild()) return;
-    const content = m.content || m.attachments.map((a) => a.url).join("\n");
+    const content = messageContent(m.content, m.attachments.map((a) => a.url));
     desk.recordDiscordMessage(m.channelId, { id: m.author.id, name: m.author.username }, content);
   });
 
