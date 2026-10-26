@@ -109,6 +109,17 @@
   .tab { height:36px; padding:0 14px; background:transparent; color:var(--muted); border:1px solid transparent; border-radius:2px; font-weight:600; font-size:14px; transition:color .15s, background .15s, border-color .15s; white-space:nowrap; }
   .tab:hover { color:var(--ink); }
   .tab.on { background:var(--accent-deep); color:var(--accent-ink); border-color:var(--accent-line); }
+  .wait { display:inline-flex; align-items:center; gap:6px; font:600 11px var(--mono); letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; }
+  .wait i { width:8px; height:8px; border:2px solid currentColor; flex:none; }
+  .wait.support { color:var(--accent-ink); } .wait.support i { background:currentColor; }
+  .wait.customer { color:var(--muted); }
+  .row .t small .wait { margin-left:8px; }
+  .chips { display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .chip { height:30px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; background:transparent; border:1px solid var(--border); border-radius:2px; font-size:13px; font-weight:600; color:var(--muted); transition:color .15s, border-color .15s, background .15s; }
+  .chip:hover { color:var(--ink); border-color:var(--accent-line); }
+  .chip.on { background:var(--accent-deep); color:var(--accent-ink); border-color:var(--accent-line); }
+  .chip.customer.on { background:var(--raised); color:var(--ink); }
+  .chip b { font:500 12px var(--mono); opacity:.85; }
   .tab span { font:500 12px var(--mono); margin-left:6px; opacity:.8; }
 
   .row { width:100%; display:flex; align-items:center; gap:14px; padding:14px 16px; border:0; border-bottom:1px solid var(--border); background:none; text-align:left; transition:background .15s, box-shadow .2s; }
@@ -191,7 +202,7 @@ const STATUS = {
   closed:      { label:"Fermé",    color:"#AEACA8", hint:"Résolus" },
 };
 const TABS = [["", "Tous"], ["open", "Ouverts"], ["in_progress", "En cours"], ["closed", "Fermés"]];
-const state = { me:null, guilds:[], guild:null, menu:false, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
+const state = { wait:"", awaiting:{support:0,customer:0}, me:null, guilds:[], guild:null, menu:false, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
 const app = document.getElementById("app");
 let lastStats = null;
 
@@ -317,6 +328,7 @@ async function load() {
   state.changed = new Set(state.tickets.length ? data.tickets.filter((t) => prev.get(t.id) !== t.status + t.updatedAt).map((t) => t.id) : []);
   state.tickets = data.tickets;
   state.stats = data.stats;
+  state.awaiting = data.awaiting ?? { support:0, customer:0 };
   if (state.selected) {
     try { state.detail = await api("/tickets/" + state.selected); }
     catch (e) { if (e.message === "auth") throw e; state.selected = null; state.detail = null; }
@@ -399,6 +411,7 @@ function visibleTickets() {
   const q = state.query.trim().toLowerCase();
   return state.tickets.filter((t) =>
     (!state.filter || t.status === state.filter) &&
+    (!state.wait || (t.status !== "closed" && t.awaiting === state.wait)) &&
     (!q || `${t.id} ${t.subject} ${t.description ?? ""} ${t.userName} ${t.assignee ?? ""}`.toLowerCase().includes(q)));
 }
 
@@ -413,12 +426,15 @@ function kpi(key, i) {
     h("div", { class:"eyebrow lbl" }, h("span", { class:"sq" }), s.label + "s"), n, h("small", {}, s.hint));
 }
 
+const WAIT = { support:"En attente du support", customer:"En attente du client" };
+const waitTag = (t) => t.status === "closed" || !WAIT[t.awaiting] ? null : h("span", { class:"wait " + t.awaiting }, h("i"), WAIT[t.awaiting]);
+
 function row(t, i) {
   const s = STATUS[t.status];
   return h("button", { class:"row" + (t.id === state.selected ? " sel" : "") + (state.changed.has(t.id) ? " flash" : "") + (state.animate ? " rise" : ""), style:`--c:${s.color};--i:${Math.min(i, 8)}`,
     onclick: () => select(t.id) },
     h("span", { class:"avatar", "aria-hidden":"true" }, [...t.userName][0] ?? "?"),
-    h("span", { class:"t" }, h("b", {}, `#${t.id} · ${t.subject}`), h("small", {}, `${t.userName} · ${ago(t.updatedAt)}${t.assignee ? " · " + t.assignee : ""}`)),
+    h("span", { class:"t" }, h("b", {}, `#${t.id} · ${t.subject}`), h("small", {}, `${t.userName} · ${ago(t.updatedAt)}${t.assignee ? " · " + t.assignee : ""}`, waitTag(t))),
     h("span", { class:"tag" }, h("span", { class:"sq" }), s.label.toUpperCase()));
 }
 
@@ -428,13 +444,18 @@ function renderList() {
   if (state.loading) body = [1, 2, 3, 4].map(() => h("div", { class:"skel" }));
   else if (items.length) body = items.map(row);
   else body = [h("div", { class:"empty" }, bibi("empty", 44),
-    state.tickets.length ? "Aucun ticket ne correspond à ta recherche." : "Aucun ticket pour l'instant. Tout est calme.")];
+    state.tickets.length ? "Aucun ticket ne correspond à ta recherche ou à ton filtre." : "Aucun ticket pour l'instant. Tout est calme.")];
   const tabs = h("div", { class:"tabs", role:"tablist" }, TABS.map(([k, label]) => {
     const count = k ? state.stats[k] : state.tickets.length;
     return h("button", { class:"tab" + (state.filter === k ? " on" : ""), role:"tab", "aria-selected":String(state.filter === k),
       onclick: () => { state.filter = k; renderMain(); } }, label, h("span", {}, String(count)));
   }));
-  return h("section", { class:"panel list" + (state.animate ? " rise" : ""), style:"--i:4" }, tabs, h("div", { class:"items" }, body));
+  const chips = h("div", { class:"chips", role:"group", "aria-label":"Filtrer selon qui doit répondre" }, ["support", "customer"].map((k) =>
+    h("button", { class:"chip " + k + (state.wait === k ? " on" : ""), "aria-pressed":String(state.wait === k),
+      title: k === "support" ? "Le client a écrit : à toi de répondre" : "Tu as répondu : on attend le client",
+      onclick: () => { state.wait = state.wait === k ? "" : k; renderMain(); } },
+      WAIT[k], h("b", {}, String(state.awaiting[k])))));
+  return h("section", { class:"panel list" + (state.animate ? " rise" : ""), style:"--i:4" }, tabs, chips, h("div", { class:"items" }, body));
 }
 
 function renderDetail() {
@@ -495,7 +516,7 @@ function renderDetail() {
 
   return h("section", { class:"panel detail" + (state.slide ? " slide" : "") },
     h("div", { class:"dh", style:`--c:${s.color}` },
-      h("div", { class:"eyebrow lbl" }, `Ticket #${t.id}`, h("span", { class:"badge" }, s.label.toUpperCase())),
+      h("div", { class:"eyebrow lbl" }, `Ticket #${t.id}`, h("span", { class:"badge" }, s.label.toUpperCase()), waitTag(t)),
       h("h2", {}, t.subject),
       h("div", { class:"meta" }, `${t.userName} · ouvert ${ago(t.createdAt)}${t.assignee ? " · pris en charge par " + t.assignee : ""}`),
       h("div", { class:"actions" }, buttons)),
@@ -528,7 +549,7 @@ async function switchGuild(id) {
   state.menu = false;
   if (id === state.guild) return renderMain();
   state.guild = id; store.set("guild", id);
-  state.selected = null; state.detail = null; state.filter = ""; state.query = "";
+  state.selected = null; state.detail = null; state.filter = ""; state.wait = ""; state.query = "";
   state.tickets = []; state.loading = true; state.animate = true;
   renderMain();
   try { await load(); } catch (e) { if (e.message !== "auth") toast(e.message); }

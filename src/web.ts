@@ -242,6 +242,7 @@ export function createHandler(
         return json({
           tickets: desk.tickets.list((status as Status) || undefined, guildId),
           stats: desk.tickets.stats(guildId),
+          awaiting: desk.tickets.awaitingStats(guildId),
         });
       }
 
