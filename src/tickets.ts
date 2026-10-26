@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { langOf, quotaText } from "./i18n";
 
 export type Status = "open" | "in_progress" | "closed";
 export type Source = "discord" | "panel" | "system";
@@ -13,6 +14,8 @@ export interface Ticket {
   channelId: string;
   subject: string;
   description: string;
+  /** Langue de l'utilisateur (« fr », « en »…) : celle des messages postés dans son salon. */
+  locale: string;
   awaiting: Awaiting;
   status: Status;
   assignee: string | null;
@@ -48,6 +51,7 @@ interface Row {
   channel_id: string;
   subject: string;
   description: string;
+  locale: string;
   awaiting: Awaiting;
   status: Status;
   assignee: string | null;
@@ -64,6 +68,7 @@ const toTicket = (r: Row): Ticket => ({
   channelId: r.channel_id,
   subject: r.subject,
   description: r.description,
+  locale: r.locale,
   awaiting: r.awaiting,
   status: r.status,
   assignee: r.assignee,
@@ -100,7 +105,7 @@ export class TicketService {
   }
 
   create(
-    input: { guildId: string; userId: string; userName: string; channelId: string; subject: string; description?: string },
+    input: { guildId: string; userId: string; userName: string; channelId: string; subject: string; description?: string; locale?: string },
     opts: { maxActivePerUser?: number } = {},
   ): Ticket {
     if (opts.maxActivePerUser !== undefined) {
@@ -110,15 +115,15 @@ export class TicketService {
         )
         .get(input.guildId, input.userId)!.n;
       if (n >= opts.maxActivePerUser) {
-        throw new TicketError(`Tu as déjà ${n} ticket(s) en cours. Ferme-en un avant d'en ouvrir un nouveau.`);
+        throw new TicketError(quotaText(input.locale, n));
       }
     }
     const now = Date.now();
     const r = this.db
-      .query<{ id: number }, [string, string, string, string, string, string, number, number]>(
-        "INSERT INTO tickets (guild_id,user_id,user_name,channel_id,subject,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) RETURNING id",
+      .query<{ id: number }, [string, string, string, string, string, string, string, number, number]>(
+        "INSERT INTO tickets (guild_id,user_id,user_name,channel_id,subject,description,locale,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id",
       )
-      .get(input.guildId, input.userId, input.userName, input.channelId, input.subject, input.description ?? "", now, now)!;
+      .get(input.guildId, input.userId, input.userName, input.channelId, input.subject, input.description ?? "", langOf(input.locale), now, now)!;
     this.emit("ticket", r.id);
     return this.require(r.id);
   }

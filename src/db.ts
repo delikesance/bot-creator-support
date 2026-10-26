@@ -16,6 +16,7 @@ export function openDb(path: string): Database {
     subject TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     awaiting TEXT NOT NULL DEFAULT 'support',
+    locale TEXT NOT NULL DEFAULT 'en',
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','closed')),
     assignee TEXT,
     created_at INTEGER NOT NULL,
@@ -36,6 +37,7 @@ export function openDb(path: string): Database {
   if (!cols.some((c) => c.name === "guild_id")) db.run("ALTER TABLE tickets ADD COLUMN guild_id TEXT NOT NULL DEFAULT ''");
   if (!cols.some((c) => c.name === "description")) db.run("ALTER TABLE tickets ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   if (!cols.some((c) => c.name === "awaiting")) db.run("ALTER TABLE tickets ADD COLUMN awaiting TEXT NOT NULL DEFAULT 'support'");
+  if (!cols.some((c) => c.name === "locale")) db.run("ALTER TABLE tickets ADD COLUMN locale TEXT NOT NULL DEFAULT 'en'");
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_guild ON tickets(guild_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)");
   db.run("CREATE INDEX IF NOT EXISTS idx_messages_ticket ON messages(ticket_id)");

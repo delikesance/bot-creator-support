@@ -57,7 +57,7 @@ describe("ouverture", () => {
   });
 
   test("sujet vide refusé", async () => {
-    await expect(desk.open({ ...user, subject: "   " })).rejects.toThrow(/sujet/i);
+    await expect(desk.open({ ...user, subject: "   ", locale: "fr" })).rejects.toThrow(/titre/i);
   });
 
   test("sujet tronqué à 100 caractères", async () => {

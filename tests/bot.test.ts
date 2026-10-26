@@ -51,7 +51,7 @@ describe("ouverture côté utilisateur", () => {
   test("limite atteinte : message d'erreur clair, pas de crash", async () => {
     await handleInteraction(desk, ix({ kind: "modal", id: "ticket:modal", subject: "a" }));
     await handleInteraction(desk, ix({ kind: "modal", id: "ticket:modal", subject: "b" }));
-    expect(out.replies[1]).toContain("déjà");
+    expect(out.replies[1]).toContain("already");
     expect(desk.tickets.list()).toHaveLength(1);
   });
 });

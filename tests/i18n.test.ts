@@ -3,7 +3,7 @@ import { openDb } from "../src/db";
 import { TicketService } from "../src/tickets";
 import { SupportDesk, type Gateway } from "../src/desk";
 import { handleInteraction, type Ix } from "../src/bot/handlers";
-import { langOf, welcomeText, openedText } from "../src/i18n";
+import { langOf, welcomeText, openedText, pack, quotaText, commandLocalizations } from "../src/i18n";
 
 const sent: string[] = [];
 const gw: Gateway = {
@@ -88,5 +88,86 @@ describe("à l'ouverture d'un ticket", () => {
     expect(sent[0]).toContain("Englisch");
     expect(replies[0]).toContain("<#chan1>");
     expect(replies[0]).toContain("Ticket");
+  });
+});
+
+const LANGS = ["en", "fr", "es", "de", "pt", "it", "nl", "pl", "ru", "tr", "ja", "ko", "zh"];
+
+describe("tous les textes sont traduits", () => {
+  test("chaque langue a tous les champs, non vides, sans reste d'un autre gabarit", () => {
+    const keys = Object.keys(pack("en"));
+    for (const l of LANGS) {
+      const p = pack(l) as unknown as Record<string, string>;
+      expect(Object.keys(p).sort()).toEqual([...keys].sort());
+      for (const k of keys) if (!(l === "en" && k === "english")) expect(p[k]!.trim().length).toBeGreaterThan(0);
+    }
+  });
+  test("limites Discord respectées (modale, bouton, commandes)", () => {
+    for (const l of LANGS) {
+      const p = pack(l);
+      expect(p.modalTitle.length).toBeLessThanOrEqual(45);
+      expect(p.subjectLabel.length).toBeLessThanOrEqual(45);
+      expect(p.descLabel.length).toBeLessThanOrEqual(45);
+      expect(p.subjectPh.length).toBeLessThanOrEqual(100);
+      expect(p.descPh.length).toBeLessThanOrEqual(100);
+      expect(p.panelBtn.length).toBeLessThanOrEqual(80);
+      for (const c of [p.cmdTicket, p.cmdClose, p.cmdSetup]) expect(c.length).toBeLessThanOrEqual(100);
+    }
+  });
+  test("les gabarits gardent leurs variables", () => {
+    for (const l of LANGS) {
+      expect(pack(l).welcome).toContain("{id}");
+      expect(pack(l).opened).toContain("{id}");
+      expect(pack(l).opened).toContain("{channel}");
+      expect(pack(l).quota).toContain("{n}");
+    }
+  });
+  test("quotaText remplit le nombre de tickets", () => {
+    expect(quotaText("fr", 2)).toContain("2");
+    expect(quotaText("en", 2)).toContain("2");
+  });
+  test("localisations des commandes slash : codes Discord valides", () => {
+    const loc = commandLocalizations("cmdTicket");
+    expect(loc.fr).toBe(pack("fr").cmdTicket);
+    expect(loc["es-ES"]).toBe(pack("es").cmdTicket);
+    expect(loc["pt-BR"]).toBe(pack("pt").cmdTicket);
+    expect(loc["zh-CN"]).toBe(pack("zh").cmdTicket);
+    expect(loc["zh-TW"]).toBe(pack("zh").cmdTicket);
+    expect(loc["en-US"]).toBeUndefined();
+  });
+});
+
+describe("dans la langue du ticket", () => {
+  test("la locale est mémorisée sur le ticket", async () => {
+    const t = await desk.open({ ...user, subject: "a", locale: "pt-BR" });
+    expect(desk.tickets.get(t.id)!.locale).toBe("pt");
+  });
+  test("fermeture et réouverture (même depuis le panel) : messages dans la langue de l'utilisateur", async () => {
+    const t = await desk.open({ ...user, subject: "a", locale: "de" });
+    sent.length = 0;
+    await desk.close(t.id, "Staff");
+    await desk.reopen(t.id, "Staff");
+    expect(sent[0]).toBe(pack("de").noticeClosed);
+    expect(sent[1]).toBe(pack("de").noticeReopened);
+  });
+  test("limite de tickets : erreur dans la langue de l'utilisateur", async () => {
+    const d = new SupportDesk(new TicketService(openDb(":memory:")), gw, { maxActivePerUser: 1 });
+    await d.open({ ...user, subject: "a", locale: "es" });
+    await expect(d.open({ ...user, subject: "b", locale: "es" })).rejects.toThrow(/ticket/i);
+    await expect(d.open({ ...user, subject: "b", locale: "es" })).rejects.toThrow(quotaText("es", 1));
+  });
+  test("réponses du bot (droits, mauvais salon, fermeture) dans la langue", async () => {
+    const replies: string[] = [];
+    const base: Ix = {
+      kind: "command", id: "setup", ...user, channelId: "nope", isStaff: false, locale: "it",
+      reply: async (t) => void replies.push(t), showSubjectModal: async () => {}, postPanel: async () => {},
+    };
+    await handleInteraction(desk, base);
+    await handleInteraction(desk, { ...base, id: "close" });
+    expect(replies[0]).toBe(pack("it").noPerm);
+    expect(replies[1]).toBe(pack("it").wrongChannel);
+    const t = await desk.open({ ...user, subject: "a", locale: "it" });
+    await handleInteraction(desk, { ...base, id: "close", channelId: t.channelId });
+    expect(replies[2]).toBe(pack("it").closedReply);
   });
 });
