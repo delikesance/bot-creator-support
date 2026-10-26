@@ -1,13 +1,26 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { SupportDesk } from "./desk";
 import type { OAuthProvider } from "./oauth";
 import { TicketError, type Status } from "./tickets";
+import { AttachmentError, MAX_REQUEST_BYTES, openStored } from "./storage";
+import { unfurl as defaultUnfurl, type Preview } from "./unfurl";
 
 const STATUSES: Status[] = ["open", "in_progress", "closed"];
 const SESSION_TTL_MS = 12 * 3600_000;
 const STATE_TTL_S = 600;
-const PAGE = join(import.meta.dir, "..", "public", "index.html");
+const PUBLIC_DIR = resolve(import.meta.dir, "..", "public");
+
+/** Fichiers statiques servis depuis public/ : liste blanche d'extensions, rien d'autre. */
+const STATIC_TYPES: Record<string, string> = {
+  html: "text/html; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  png: "image/png",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  woff2: "font/woff2",
+};
 
 interface WebConfig {
   panelPassword: string;
@@ -71,7 +84,9 @@ export function createHandler(
   cfg: WebConfig,
   oauth?: OAuthProvider,
   directory: GuildDirectory = { list: () => [] },
+  deps: { unfurl?: (url: string) => Promise<Preview | null> } = {},
 ) {
+  const unfurl = deps.unfurl ?? defaultUnfurl;
   const accessible = (s: Session) => directory.list().filter((g) => s.all || s.guilds.includes(g.id));
   const sign = (v: string) => createHmac("sha256", cfg.sessionSecret).update(v).digest("base64url");
   const makeToken = (who: { id: string; name: string; avatarUrl?: string; all: boolean; guilds: string[] }) => {
@@ -155,16 +170,61 @@ export function createHandler(
     return json({ error: "Not found" }, 404);
   }
 
+  /** Fichier de public/ pour ce chemin, ou null (extension hors liste, traversée, fichier absent). */
+  async function staticFile(path: string): Promise<Response | null> {
+    let rel: string;
+    try {
+      rel = decodeURIComponent(path === "/" ? "/index.html" : path);
+    } catch {
+      return null;
+    }
+    const ext = /\.([a-z0-9]+)$/.exec(rel)?.[1];
+    const unsafe = rel.includes("\\") || rel.includes("\0") || rel.includes("//") || rel.split("/").some((p) => p === "." || p === "..");
+    if (!ext || !STATIC_TYPES[ext] || unsafe) return null;
+    const full = resolve(PUBLIC_DIR, "." + rel);
+    if (!full.startsWith(PUBLIC_DIR + sep)) return null;
+    const file = Bun.file(full);
+    if (!(await file.exists())) return null;
+    return new Response(file, {
+      headers: {
+        "content-type": STATIC_TYPES[ext]!,
+        "x-content-type-options": "nosniff",
+        "cache-control": ext === "woff2" ? "public, max-age=604800" : "no-cache",
+      },
+    });
+  }
+
+  /** Corps d'une réponse : JSON ou multipart (content + files). */
+  async function readReply(req: Request): Promise<{ content: string; files: { name: string; data: Uint8Array }[] }> {
+    if (!(req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+      const body = (await req.json().catch(() => ({}))) as { content?: unknown };
+      return { content: String(body.content ?? ""), files: [] };
+    }
+    // Marge pour les en-têtes multipart au-delà des 40 Mo de fichiers.
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_REQUEST_BYTES + 1024 * 1024) {
+      throw new AttachmentError("Les fichiers dépassent 40 Mo au total.", 413);
+    }
+    const form = await req.formData().catch(() => null);
+    if (!form) throw new AttachmentError("Formulaire illisible.", 400);
+    const files: { name: string; data: Uint8Array }[] = [];
+    for (const f of form.getAll("files")) {
+      if (typeof f === "string") continue;
+      files.push({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) });
+    }
+    return { content: String(form.get("content") ?? ""), files };
+  }
+
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
 
-    if (req.method === "GET" && (path === "/" || path === "/index.html")) {
-      return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8" } });
-    }
     if (path === "/health") return json({ ok: true });
     if (path.startsWith("/auth/") && req.method === "GET") return handleAuth(req, url);
     if (path === "/api/config") return json({ oauth: !!oauth });
+    if (req.method === "GET" && !path.startsWith("/api/")) {
+      const res = await staticFile(path);
+      if (res) return res;
+    }
 
     if (path === "/api/login" && req.method === "POST") {
       if (oauth) return json({ error: "Not found" }, 404);
@@ -229,6 +289,32 @@ export function createHandler(
     }
 
     try {
+      if (path === "/api/unfurl" && req.method === "GET") {
+        const target = url.searchParams.get("url") ?? "";
+        if (!target || target.length > 2048) return json({ error: "Lien invalide." }, 400);
+        const preview = await unfurl(target);
+        return preview ? json(preview, 200, { "cache-control": "private, max-age=600" }) : json({ error: "Aperçu indisponible." }, 404);
+      }
+
+      const att = /^\/api\/attachments\/(\d+)$/.exec(path);
+      if (att && req.method === "GET") {
+        const a = desk.tickets.attachment(Number(att[1]));
+        // Pièce d'un serveur non autorisé : indiscernable d'une pièce inexistante.
+        if (!a || !canAccess(a.guildId) || !desk.attachmentsDir) return json({ error: "Pièce jointe introuvable." }, 404);
+        const file = openStored(desk.attachmentsDir, a.file);
+        if (!file || !(await file.exists())) return json({ error: "Pièce jointe introuvable." }, 404);
+        const ascii = a.name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+        return new Response(file, {
+          headers: {
+            "content-type": a.mime,
+            "content-disposition": `${a.kind === "image" ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(a.name)}`,
+            "x-content-type-options": "nosniff",
+            "content-security-policy": "default-src 'none'; sandbox",
+            "cache-control": "private, max-age=86400",
+          },
+        });
+      }
+
       if (path === "/api/tickets" && req.method === "GET") {
         const status = url.searchParams.get("status");
         if (status && !STATUSES.includes(status as Status)) return json({ error: "Statut invalide." }, 400);
@@ -268,14 +354,15 @@ export function createHandler(
               await desk.deleteChannel(id);
               return json({ ok: true });
             case "reply": {
-              const body = (await req.json().catch(() => ({}))) as { content?: string };
-              await desk.reply(id, String(body.content ?? ""), by, session.avatarUrl);
-              return json({ ok: true });
+              const { content, files } = await readReply(req);
+              const message = await desk.reply(id, content, by, session.avatarUrl, files);
+              return json({ ok: true, message });
             }
           }
         }
       }
     } catch (e) {
+      if (e instanceof AttachmentError) return json({ error: e.message }, e.status);
       if (e instanceof TicketError) {
         return json({ error: e.message }, /introuvable/.test(e.message) ? 404 : 409);
       }
