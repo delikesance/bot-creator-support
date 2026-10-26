@@ -19,7 +19,8 @@ export interface IncomingFile {
 
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
-  createTicketChannel(o: { guildId: string; userId: string; userName: string }): Promise<string>;
+  /** `categoryId` : catégorie choisie avec /setup pour ce serveur ; absente, le bot applique TICKET_CATEGORY_ID s'il existe. */
+  createTicketChannel(o: { guildId: string; userId: string; userName: string; categoryId?: string | null }): Promise<string>;
   send(
     channelId: string,
     text: string,
@@ -105,7 +106,7 @@ export class SupportDesk {
     if (!subject) throw new TicketError(pack(input.locale).emptySubject);
     this.assertQuota(input.guildId, input.userId, input.locale);
 
-    const channelId = await this.gw.createTicketChannel(input);
+    const channelId = await this.gw.createTicketChannel({ ...input, categoryId: this.tickets.categoryId(input.guildId) });
     let ticket: Ticket;
     try {
       ticket = this.tickets.create({ ...input, subject, description, channelId }, this.opts);
