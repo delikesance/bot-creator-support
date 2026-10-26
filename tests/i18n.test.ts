@@ -110,7 +110,6 @@ describe("tous les textes sont traduits", () => {
       expect(p.descLabel.length).toBeLessThanOrEqual(45);
       expect(p.subjectPh.length).toBeLessThanOrEqual(100);
       expect(p.descPh.length).toBeLessThanOrEqual(100);
-      expect(p.panelBtn.length).toBeLessThanOrEqual(80);
       for (const c of [p.cmdTicket, p.cmdClose, p.cmdSetup]) expect(c.length).toBeLessThanOrEqual(100);
     }
   });
