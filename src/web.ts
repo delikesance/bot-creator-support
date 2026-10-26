@@ -260,10 +260,6 @@ export function createHandler(
         if (action && req.method === "POST") {
           const by = session.name;
           switch (action) {
-            case "claim":
-              return json({ ticket: await desk.claim(id, { id: session.id, name: by }) });
-            case "release":
-              return json({ ticket: await desk.release(id, by) });
             case "close":
               return json({ ticket: await desk.close(id, by) });
             case "reopen":

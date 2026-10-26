@@ -75,12 +75,6 @@ describe("gestion dans le salon ticket", () => {
   });
   const inTicket = { channelId: "chanX" };
 
-  test("claim réservé au staff", async () => {
-    await handleInteraction(desk, ix({ kind: "button", id: "ticket:claim", ...inTicket }));
-    expect(desk.tickets.get(id)!.status).toBe("open");
-    await handleInteraction(desk, ix({ kind: "button", id: "ticket:claim", isStaff: true, userId: "a1", guildId: "g1", userName: "admin", ...inTicket }));
-    expect(desk.tickets.get(id)!.status).toBe("in_progress");
-  });
   test("le propriétaire peut fermer son ticket", async () => {
     await handleInteraction(desk, ix({ kind: "button", id: "ticket:close", ...inTicket }));
     expect(desk.tickets.get(id)!.status).toBe("closed");

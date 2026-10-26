@@ -25,9 +25,8 @@ for (const [user, subject] of subjects) {
   const t = await desk.open({ guildId: "g1", userId: user, userName: user, subject });
   desk.recordDiscordMessage(t.channelId, { id: user, name: user }, "Bonjour, j'ai besoin d'aide s'il vous plaît.");
 }
-await desk.claim(2, { id: "a", name: "Support" });
 await desk.reply(2, "Bonjour Bob, je regarde votre facture tout de suite.", "Support");
-await desk.claim(3, { id: "a", name: "Support" });
+desk.recordDiscordMessage("demo3", { id: "staff", name: "Support" }, "Je regarde ça.");
 await desk.close(4, "Support");
 await desk.close(5, "Support");
 for (const [user, subject] of [["farid", "Mon bot ne répond plus"], ["gaëlle", "Accès au salon VIP"]] as const) {

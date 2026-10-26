@@ -58,7 +58,7 @@ describe("événements du service", () => {
     const events: TicketEvent[] = [];
     desk.tickets.subscribe((e) => events.push(e));
     const t = await desk.open({ ...user, subject: "a", description: "d" });
-    await desk.claim(t.id, { id: "s", name: "Staff" });
+    await desk.reply(t.id, "Bonjour", "Staff");
     desk.recordDiscordMessage(t.channelId, { id: "u1", name: "alice" }, "salut");
     expect(events.some((e) => e.type === "ticket" && e.ticketId === t.id && e.guildId === "gA")).toBe(true);
     expect(events.filter((e) => e.type === "message").length).toBeGreaterThan(0);
@@ -138,16 +138,8 @@ describe("conversation côté utilisateur", () => {
     const opts: unknown[] = [];
     const d = new SupportDesk(new TicketService(openDb(":memory:")), { ...gw, send: async (_c, _t, o) => void opts.push(o) });
     const t = await d.open({ ...user, subject: "a", description: "d" });
-    await d.claim(t.id, { id: "s", name: "Staff" });
     await d.close(t.id, "Staff");
     await d.reopen(t.id, "Staff");
     expect(opts.every((o) => o === undefined)).toBe(true);
-  });
-  test("remettre en attente n'écrit rien à l'utilisateur", async () => {
-    const t = await desk.open({ ...user, subject: "a" });
-    await desk.claim(t.id, { id: "s", name: "Staff" });
-    const n = sent.length;
-    await desk.release(t.id, "Staff");
-    expect(sent.length).toBe(n);
   });
 });

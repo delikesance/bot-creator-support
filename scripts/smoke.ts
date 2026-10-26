@@ -30,10 +30,10 @@ const step = (s: string) => console.log("✔", s);
 
 const t = await desk.open({ guildId: cfg.testGuildId!, userId: client.user!.id, userName: "smoke-test", subject: "Test de bout en bout" });
 step(`ticket #${t.id} créé, salon ${t.channelId}`);
-await call(`/tickets/${t.id}/claim`);
-step("pris en charge (in_progress)");
 await call(`/tickets/${t.id}/reply`, { content: "Réponse envoyée depuis le panel 👋" });
 step("réponse du panel postée dans Discord");
+if (desk.tickets.get(t.id)!.status !== "in_progress") throw new Error("prise en charge automatique absente");
+step("ticket passé en cours automatiquement");
 await desk.reply(t.id, "Réponse sous un pseudo et un avatar", "Angelo (test)", "https://cdn.discordapp.com/embed/avatars/2.png");
 const ch = (await client.channels.fetch(t.channelId))!;
 if (!ch.isTextBased()) throw new Error("salon non textuel");

@@ -1,7 +1,7 @@
 # Bot Discord de support par tickets (Bun)
 
 Les utilisateurs ouvrent un ticket depuis Discord (`/ticket` ou bouton du panneau `/setup`) : le bot crée un salon privé.
-L'administrateur gère tout depuis le **panel web** (statuts 🟢 Ouvert / 🟡 En cours / 🔴 Fermé, réponses postées par le bot dans le salon, prise en charge, fermeture, réouverture, suppression du salon).
+L'administrateur gère tout depuis le **panel web** (statuts 🟢 Ouvert / 🟡 En cours / 🔴 Fermé, réponses postées dans le salon, fermeture, réouverture, suppression du salon).
 
 ![Panel](docs/panel.png)
 
@@ -56,3 +56,4 @@ bun run scripts/demo.ts    # panel avec données fictives, sans Discord
 - Le panel reçoit les messages et changements de statut en direct (Server-Sent Events, `/api/events?guild=…`), avec un rafraîchissement de secours toutes les 30 s. Derrière un reverse proxy, désactiver la mise en mémoire tampon pour `/api/events`.
 - La modale Discord demande un **titre** (100 car. max) et une **description détaillée** (20 à 1000 car.), reprise dans le salon et l'historique du ticket.
 - Chaque ticket actif indique **qui doit répondre** : « en attente du support » (le client a écrit en dernier) ou « en attente du client » (le support a répondu). C'est calculé automatiquement d'après le dernier message, les notes système sont ignorées. Deux filtres avec compteurs dans la liste.
+- **Pas de prise en charge manuelle** : un ticket est « Ouvert » tant que personne du support n'a répondu, puis passe automatiquement « En cours » au nom du premier qui répond (depuis le panel ou directement dans le salon). Seuls Fermer, Rouvrir et Supprimer le salon sont des actions manuelles.
