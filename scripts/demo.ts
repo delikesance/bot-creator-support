@@ -71,6 +71,7 @@ await desk.close(4, "Angelo");
 await open("g1", "emma", "How do I change my username?", "I cannot find the option in the settings.");
 await desk.reply(5, "Settings > Profile > Username. Tell us if you get stuck!", "Angelo");
 await desk.close(5, "Angelo");
+desk.channelRemoved(desk.tickets.get(5)!.channelId); // salon supprimé : montre l'indication dans le panel
 await open("g1", "kenji", "コマンドのオプションが保存されません", "保存ボタンを押しても、オプションが元に戻ってしまいます。", "ja");
 await open("g1", "sofía", "No puedo conectar mi token de Telegram", "Ya probé con un token nuevo y sigue diciendo \"invalid token\".", "es");
 await open("g1", "priya", "Duplicate subscription, please refund", "Attached the receipt. I bought the Premium plan twice by mistake.");
