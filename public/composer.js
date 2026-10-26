@@ -290,7 +290,7 @@ export function createComposer(opts) {
     addFiles,
     showDrop(on) { overlay.hidden = !on; },
     get canDrop() { return !closed() && !sending; },
-    focus(opts2) { if (!ta.disabled) ta.focus(opts2); },
+    focus(which, opts2) { if (which === "note" && caps.notes && mode !== "note") { mode = "note"; chrome(); } else if (which === "reply" && mode !== "reply") { mode = "reply"; chrome(); } if (!ta.disabled) ta.focus(opts2); },
     get typing() { return !!ta.value; },
   };
 }

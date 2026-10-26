@@ -220,6 +220,7 @@ async function logout() { await post("/logout").catch(() => {}); state.me = null
 
 async function toggleNotify() {
   if (!("Notification" in window)) return toast("This browser does not support notifications.");
+  if (!state.notify && Notification.permission === "denied") return toast("Notifications are blocked. Allow them in your browser's site settings, then try again.");
   if (!state.notify) {
     const p = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     if (p !== "granted") return toast("Notifications are blocked in your browser settings.");
@@ -647,7 +648,14 @@ function renderMetrics() {
     body);
 }
 
-function renderAside(d) {
+/** Under 1100 px the side panel is a sheet: customer, details, response times, attachments, activity, previous tickets. */
+function openSheet(d) {
+  return modal((done) => h("div", { class: "dialog sheet", role: "dialog", "aria-modal": "true", "aria-label": "Ticket details" },
+    h("div", { class: "sheet-head" }, h("h3", {}, `Ticket #${d.ticket.id} details`), h("button", { class: "btn icon ghost", type: "button", "aria-label": "Close details", "data-autofocus": "", onclick: () => done(null) }, icon("x", 16))),
+    renderAside(d, { sheet: true, done })));
+}
+
+function renderAside(d, { sheet = false, done } = {}) {
   const t = d.ticket, s = STATUS[t.status], tg = targets(), now = Date.now();
   const mineTickets = state.tickets.filter((x) => x.userId === t.userId);
   const others = mineTickets.filter((x) => x.id !== t.id).sort((a, b) => b.createdAt - a.createdAt).slice(0, 3);
@@ -661,12 +669,12 @@ function renderAside(d) {
   const det = [
     h("div", { class: "eyebrow" }, "Details"),
     h("div", { class: "kv" }, h("span", {}, "Status"), h("span", { class: "v" }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label)),
-    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, assigneeControl(t, ""))),
+    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, sheet ? (t.assignee ?? "Unassigned") : assigneeControl(t, ""))),
   ];
-  det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, priorityControl(t, ""))));
+  det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, sheet ? (PRIORITIES.find((p) => p[0] === t.priority)?.[1] ?? "Normal") : priorityControl(t, ""))));
   det.push(h("div", { class: "kv", style: "align-items:flex-start" }, h("span", {}, "Tags"), h("span", { class: "v" },
-    t.tags.map((g) => h("span", { class: "badge" }, "# " + g, h("button", { type: "button", "aria-label": `Remove tag ${g}`, style: "background:none;border:0;padding:0;margin-left:2px;display:grid;color:var(--muted)", onclick: () => mutate(`/tickets/${t.id}/tags`, { tags: t.tags.filter((x) => x !== g) }) }, icon("x", 12)))),
-    t.tags.length < 8 ? h("button", { class: "btn sm ghost", type: "button", "aria-label": "Add a tag", style: "height:24px;padding:0 8px", onclick: () => tagDialog(t) }, icon("plus", 12)) : null)));
+    t.tags.map((g) => h("span", { class: "badge" }, "# " + g, sheet ? null : h("button", { type: "button", "aria-label": `Remove tag ${g}`, style: "background:none;border:0;padding:0;margin-left:2px;display:grid;color:var(--muted)", onclick: () => mutate(`/tickets/${t.id}/tags`, { tags: t.tags.filter((x) => x !== g) }) }, icon("x", 12)))),
+    t.tags.length < 8 && !sheet ? h("button", { class: "btn sm ghost", type: "button", "aria-label": "Add a tag", style: "height:24px;padding:0 8px", onclick: () => tagDialog(t) }, icon("plus", 12)) : null)));
   if (t.closeReason) det.push(h("div", { class: "kv" }, h("span", {}, "Closed as"), h("span", { class: "v" }, REASONS.find((r) => r[0] === t.closeReason)?.[1] ?? t.closeReason)));
   if (t.rating) det.push(h("div", { class: "kv" }, h("span", {}, "Rating"), h("span", { class: "v mono" }, `${t.rating} / 5`)));
   det.push(h("div", { class: "kv" }, h("span", {}, "Server"), h("span", { class: "v" }, state.guilds.find((g) => g.id === t.guildId)?.name ?? "")));
@@ -690,8 +698,8 @@ function renderAside(d) {
       : h("a", { class: "thumb", href: a.url, download: a.name, title: `Download ${a.name}` }, extBadge(a.name)))),
     h("span", { class: "small" }, "Stored for this ticket. They stay available after Discord's links expire.")));
   if (others.length) sections.push(h("div", { class: "sec" }, h("div", { class: "eyebrow" }, "Previous tickets"),
-    others.map((o) => h("a", { class: "kv", href: "#/t/" + o.id }, h("span", { class: "truncate" }, `#${o.id} ${o.subject}`), h("span", { class: "badge" }, STATUS[o.status].label)))));
-  return h("aside", { class: "aside", "aria-label": "Ticket context" }, sections);
+    others.map((o) => h("a", { class: "kv", href: "#/t/" + o.id, onclick: () => done?.() }, h("span", { class: "truncate" }, `#${o.id} ${o.subject}`), h("span", { class: "badge" }, STATUS[o.status].label)))));
+  return sheet ? h("div", { class: "sheet-body" }, sections) : h("aside", { class: "aside", "aria-label": "Ticket context" }, sections);
 }
 
 function renderTicket() {
@@ -720,7 +728,7 @@ function renderTicket() {
       h("div", { class: "ttl" },
         h("div", { class: "line" }, h("span", { class: "eyebrow" }, `Ticket #${t.id}`), h("span", { class: "badge", style: `border-color:${s.color}55` }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label), wait),
         h("h1", {}, t.subject)),
-      h("div", { class: "acts" }, assigneeControl(t, "lg"), priorityControl(t, "lg"), buttons)),
+      h("div", { class: "acts" }, assigneeControl(t, "lg"), priorityControl(t, "lg"), h("button", { class: "btn ghost details-btn", type: "button", onclick: () => openSheet(d) }, "Details"), buttons)),
     h("div", { class: "cols" }, h("section", { class: "convo", "aria-label": "Conversation" }, msgs, c.el, c.overlay), renderAside(d)));
 }
 
@@ -819,9 +827,10 @@ async function switchGuild(id) {
 }
 
 function notifyChanged() {
-  if (!state.notify || !document.hidden || Notification.permission !== "granted") return;
+  if (!state.notify || !document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
   for (const t of state.tickets) if (state.changed.has(t.id) && t.awaiting === "support" && isOpen(t)) {
-    new Notification(`#${t.id} ${t.subject}`, { body: plain(t.lastMessage?.content ?? `${t.userName} wrote.`), tag: "ticket-" + t.id });
+    const n = new Notification(`#${t.id} ${t.subject}`, { body: plain(t.lastMessage?.content ?? `${t.userName} wrote.`), tag: "ticket-" + t.id });
+    n.onclick = () => { window.focus(); location.hash = "#/t/" + t.id; n.close(); };
   }
 }
 
@@ -891,14 +900,38 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "Tab") { e.preventDefault(); lb.el.querySelector("button, a")?.focus(); }
     return;
   }
-  if (e.key === "Escape" && !document.querySelector(".scrim") && !state.pop && state.selected) {
+  if (e.key === "Escape" && !document.querySelector(".scrim:not(.out)") && !state.pop && state.selected) {
     // In the reply box, the first Escape leaves the field (the draft is kept); the second returns to the list.
     if (document.activeElement?.tagName === "TEXTAREA") document.activeElement.blur(); else closeTicket();
     return;
   }
   if (e.key === "Escape" && state.pop) closePop();
+  const typingNow = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "") || document.activeElement?.isContentEditable;
+  if (!typingNow && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector(".scrim:not(.out)") && shell) {
+    if (e.key === "?") { e.preventDefault(); showShortcuts(); return; }
+    if (state.detail && (e.key === "r" || e.key === "n")) { e.preventDefault(); composers.get(state.selected)?.focus(e.key === "n" ? "note" : "reply"); return; }
+    if (!state.detail && (e.key === "j" || e.key === "k")) {
+      const rows = [...document.querySelectorAll("a.row")];
+      if (!rows.length) return;
+      e.preventDefault();
+      const i = rows.indexOf(document.activeElement);
+      rows[Math.max(0, Math.min(rows.length - 1, i < 0 ? 0 : i + (e.key === "j" ? 1 : -1)))].focus();
+      return;
+    }
+  }
   if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "") && !state.detail) { e.preventDefault(); shell?.input.focus(); }
 });
+
+const SHORTCUTS = [
+  ["/", "Search tickets"], ["?", "Show this list"], ["j / k", "Next or previous ticket in the list"], ["Enter", "Open the focused ticket"],
+  ["r", "Reply to the customer"], ["n", "Write an internal note"], ["Ctrl + Enter", "Send the reply or note"], ["/ in a reply", "Insert a saved reply"], ["Esc", "Leave the reply box, then go back to the inbox"],
+];
+function showShortcuts() {
+  return modal((done) => h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": "Keyboard shortcuts" },
+    h("h3", {}, "Keyboard shortcuts"),
+    h("div", { class: "checks" }, SHORTCUTS.map(([k, l]) => h("div", { class: "kv" }, h("span", { class: "truncate", style: "color:var(--ink)" }, l), h("span", { class: "kbd" }, k)))),
+    h("div", { class: "actions" }, h("button", { class: "btn hero sm", type: "button", "data-autofocus": "", onclick: () => done(null) }, "Done"))));
+}
 
 /* ---------- Start ---------- */
 onAuthLost(() => renderLogin());
