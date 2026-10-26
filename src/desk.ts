@@ -1,5 +1,5 @@
 import { TicketError, TicketService, type Ticket } from "./tickets";
-import { welcomeText } from "./i18n";
+import { pack, quotaText, welcomeText } from "./i18n";
 
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
@@ -39,8 +39,8 @@ export class SupportDesk {
   }): Promise<Ticket> {
     const subject = input.subject.trim().slice(0, MAX_SUBJECT);
     const description = (input.description ?? "").trim().slice(0, MAX_DESCRIPTION);
-    if (!subject) throw new TicketError("Le sujet ne peut pas être vide.");
-    this.assertQuota(input.guildId, input.userId);
+    if (!subject) throw new TicketError(pack(input.locale).emptySubject);
+    this.assertQuota(input.guildId, input.userId, input.locale);
 
     const channelId = await this.gw.createTicketChannel(input);
     let ticket: Ticket;
@@ -61,14 +61,14 @@ export class SupportDesk {
   async close(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.close(id);
     await this.gw.setUserLocked(t.channelId, t.userId, true).catch(() => {});
-    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, undefined, "🔴 Ton ticket est fermé. Merci de nous avoir contactés !");
+    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, undefined, pack(t.locale).noticeClosed);
     return t;
   }
 
   async reopen(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.reopen(id);
     await this.gw.setUserLocked(t.channelId, t.userId, false).catch(() => {});
-    await this.notify(t, `🟢 Ticket rouvert par **${by}**.`, undefined, "🟢 Ton ticket a été rouvert.");
+    await this.notify(t, `🟢 Ticket rouvert par **${by}**.`, undefined, pack(t.locale).noticeReopened);
     return t;
   }
 
@@ -108,12 +108,12 @@ export class SupportDesk {
     this.tickets.addMessage(t.id, { authorId: "system", authorName: "Système", content: `🟡 Pris en charge par **${by}**.`, source: "system" });
   }
 
-  private assertQuota(guildId: string, userId: string) {
+  private assertQuota(guildId: string, userId: string, locale?: string) {
     const max = this.opts.maxActivePerUser;
     if (max === undefined) return;
     const active = this.tickets.list(undefined, guildId).filter((t) => t.userId === userId && t.status !== "closed").length;
     if (active >= max) {
-      throw new TicketError(`Tu as déjà ${active} ticket(s) en cours. Ferme-en un avant d'en ouvrir un nouveau.`);
+      throw new TicketError(quotaText(locale, active));
     }
   }
 

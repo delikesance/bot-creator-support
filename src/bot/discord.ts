@@ -21,6 +21,7 @@ import type { Config } from "../config";
 import type { Gateway, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
 import { messageContent } from "./content";
+import { pack } from "../i18n";
 import { registerCommands } from "./register";
 
 const button = (id: string, label: string, style: ButtonStyle) =>
@@ -163,13 +164,13 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
         await i.showModal(
           new ModalBuilder()
             .setCustomId("ticket:modal")
-            .setTitle("Ouvrir un ticket")
+            .setTitle(pack(i.locale).modalTitle)
             .addComponents(
               new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
                   .setCustomId("subject")
-                  .setLabel("Titre")
-                  .setPlaceholder("Ex. : Impossible de me connecter")
+                  .setLabel(pack(i.locale).subjectLabel)
+                  .setPlaceholder(pack(i.locale).subjectPh)
                   .setStyle(TextInputStyle.Short)
                   .setMaxLength(100)
                   .setRequired(true),
@@ -177,8 +178,8 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
               new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
                   .setCustomId("description")
-                  .setLabel("Description détaillée")
-                  .setPlaceholder("Que s'est-il passé ? Que voulais-tu faire ? Messages d'erreur, étapes pour reproduire…")
+                  .setLabel(pack(i.locale).descLabel)
+                  .setPlaceholder(pack(i.locale).descPh)
                   .setStyle(TextInputStyle.Paragraph)
                   .setMinLength(20)
                   .setMaxLength(1000)
@@ -190,18 +191,17 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     },
     postPanel: async () => {
       const ch = i.channel;
+      // Le panneau est public : il suit la langue du serveur ; la confirmation, celle de l'admin.
+      const pp = pack(i.guildLocale ?? i.locale);
       if (ch && "send" in ch) {
         await ch.send({
-          content:
-            "## 🎫 Support\nUn souci, une question ? Clique sur le bouton pour ouvrir un ticket privé avec l'équipe.",
+          content: pp.panel,
           components: [
-            new ActionRowBuilder<ButtonBuilder>().addComponents(
-              button("ticket:open", "Ouvrir un ticket", ButtonStyle.Primary),
-            ),
+            new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:open", pp.panelBtn, ButtonStyle.Primary)),
           ],
         });
       }
-      await reply("✅ Panneau posté.");
+      await reply(pack(i.locale).panelPosted);
     },
   };
 }

@@ -1,6 +1,6 @@
 import type { SupportDesk } from "../desk";
 import { TicketError } from "../tickets";
-import { openedText } from "../i18n";
+import { openedText, pack } from "../i18n";
 
 /** Vue minimale d'une interaction Discord, pour rester testable sans réseau. */
 export interface Ix {
@@ -23,20 +23,19 @@ export interface Ix {
   postPanel(): Promise<void>;
 }
 
-const NO_PERM = "⛔ Tu n'as pas la permission de faire ça.";
-
 export async function handleInteraction(desk: SupportDesk, ix: Ix): Promise<void> {
   try {
     await route(desk, ix);
   } catch (e) {
     if (e instanceof TicketError) return ix.reply(`⚠️ ${e.message}`);
     console.error("Erreur d'interaction", e);
-    return ix.reply("❌ Une erreur est survenue, réessaie dans un instant.");
+    return ix.reply(pack(ix.locale).error);
   }
 }
 
 async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   const { kind, id } = ix;
+  const p = pack(ix.locale);
 
   if ((kind === "command" && id === "ticket") || (kind === "button" && id === "ticket:open")) {
     return ix.showSubjectModal();
@@ -48,7 +47,7 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   if (kind === "command" && id === "setup") {
-    if (!ix.isStaff) return ix.reply(NO_PERM);
+    if (!ix.isStaff) return ix.reply(p.noPerm);
     return ix.postPanel();
   }
 
@@ -57,14 +56,14 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   if (!isClose && !isReopen) return;
 
   const t = desk.tickets.getByChannel(ix.channelId);
-  if (!t) return ix.reply("⚠️ Cette action n'est possible que dans un salon de ticket.");
+  if (!t) return ix.reply(p.wrongChannel);
 
   if (isClose) {
-    if (!ix.isStaff && ix.userId !== t.userId) return ix.reply(NO_PERM);
+    if (!ix.isStaff && ix.userId !== t.userId) return ix.reply(p.noPerm);
     await desk.close(t.id, ix.userName);
-    return ix.reply("🔴 Ticket fermé.");
+    return ix.reply(p.closedReply);
   }
-  if (!ix.isStaff) return ix.reply(NO_PERM);
+  if (!ix.isStaff) return ix.reply(p.noPerm);
   await desk.reopen(t.id, ix.userName);
-  return ix.reply("🟢 Ticket rouvert.");
+  return ix.reply(p.reopenedReply);
 }

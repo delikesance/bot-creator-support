@@ -1,11 +1,13 @@
 import { PermissionFlagsBits, Routes, SlashCommandBuilder } from "discord.js";
+import { commandLocalizations, pack } from "../i18n";
 
 export const commandDefinitions = [
-  new SlashCommandBuilder().setName("ticket").setDescription("Ouvrir un ticket de support"),
-  new SlashCommandBuilder().setName("close").setDescription("Fermer le ticket de ce salon"),
+  new SlashCommandBuilder().setName("ticket").setDescription(pack("en").cmdTicket).setDescriptionLocalizations(commandLocalizations("cmdTicket")),
+  new SlashCommandBuilder().setName("close").setDescription(pack("en").cmdClose).setDescriptionLocalizations(commandLocalizations("cmdClose")),
   new SlashCommandBuilder()
     .setName("setup")
-    .setDescription("Poster le panneau « Ouvrir un ticket » dans ce salon")
+    .setDescription(pack("en").cmdSetup)
+    .setDescriptionLocalizations(commandLocalizations("cmdSetup"))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
