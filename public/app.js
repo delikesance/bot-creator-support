@@ -670,9 +670,10 @@ function renderAside(d, { sheet = false, done } = {}) {
   const det = [
     h("div", { class: "eyebrow" }, "Details"),
     h("div", { class: "kv" }, h("span", {}, "Status"), h("span", { class: "v" }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label)),
-    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, sheet ? (t.assignee ?? "Unassigned") : assigneeControl(t, ""))),
+    h("div", { class: "kv" }, h("span", {}, "Assignee"), h("span", { class: "v" }, t.assignee ?? "Unassigned")),
   ];
-  det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, sheet ? (PRIORITIES.find((p) => p[0] === t.priority)?.[1] ?? "Normal") : priorityControl(t, ""))));
+  // Assignee and priority are changed from the buttons in the ticket header, which stay visible at every width; here they are read-only.
+  det.push(h("div", { class: "kv" }, h("span", {}, "Priority"), h("span", { class: "v" }, PRIORITIES.find((p) => p[0] === t.priority)?.[1] ?? "Normal")));
   det.push(h("div", { class: "kv", style: "align-items:flex-start" }, h("span", {}, "Tags"), h("span", { class: "v" },
     t.tags.map((g) => h("span", { class: "badge" }, "# " + g, sheet ? null : h("button", { type: "button", "aria-label": `Remove tag ${g}`, style: "background:none;border:0;padding:0;margin-left:2px;display:grid;color:var(--muted)", onclick: () => mutate(`/tickets/${t.id}/tags`, { tags: t.tags.filter((x) => x !== g) }) }, icon("x", 12)))),
     t.tags.length < 8 && !sheet ? h("button", { class: "btn sm ghost", type: "button", "aria-label": "Add a tag", style: "height:24px;padding:0 8px", onclick: () => tagDialog(t) }, icon("plus", 12)) : null)));
