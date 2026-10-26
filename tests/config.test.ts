@@ -51,16 +51,16 @@ describe("loadConfig", () => {
   });
 });
 
-describe("serveur des tickets", () => {
-  test("dev : salons créés sur le serveur de test", () => {
-    const c = loadConfig({ DISCORD_TOKEN: TOKEN, TEST_GUILD_ID: "1", GUILD_ID: "9" });
-    expect(c.guildId).toBe("1");
-  });
-  test("prod : GUILD_ID, optionnels nuls par défaut", () => {
-    const c = loadConfig({ DISCORD_TOKEN: TOKEN, NODE_ENV: "production", GUILD_ID: "9" });
-    expect(c.guildId).toBe("9");
+describe("réglages optionnels", () => {
+  test("rôle staff et catégorie nuls par défaut", () => {
+    const c = loadConfig({ DISCORD_TOKEN: TOKEN, NODE_ENV: "production" });
     expect(c.supportRoleId).toBeNull();
     expect(c.categoryId).toBeNull();
+  });
+  test("rôle staff et catégorie lus", () => {
+    const c = loadConfig({ DISCORD_TOKEN: TOKEN, TEST_GUILD_ID: "1", SUPPORT_ROLE_ID: "5", TICKET_CATEGORY_ID: "6" });
+    expect(c.supportRoleId).toBe("5");
+    expect(c.categoryId).toBe("6");
   });
 });
 

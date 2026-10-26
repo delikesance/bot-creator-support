@@ -5,6 +5,7 @@ export type Source = "discord" | "panel" | "system";
 
 export interface Ticket {
   id: number;
+  guildId: string;
   userId: string;
   userName: string;
   channelId: string;
@@ -30,6 +31,7 @@ export class TicketError extends Error {}
 
 interface Row {
   id: number;
+  guild_id: string;
   user_id: string;
   user_name: string;
   channel_id: string;
@@ -43,6 +45,7 @@ interface Row {
 
 const toTicket = (r: Row): Ticket => ({
   id: r.id,
+  guildId: r.guild_id,
   userId: r.user_id,
   userName: r.user_name,
   channelId: r.channel_id,
@@ -58,23 +61,25 @@ export class TicketService {
   constructor(private db: Database) {}
 
   create(
-    input: { userId: string; userName: string; channelId: string; subject: string },
+    input: { guildId: string; userId: string; userName: string; channelId: string; subject: string },
     opts: { maxActivePerUser?: number } = {},
   ): Ticket {
     if (opts.maxActivePerUser !== undefined) {
       const n = this.db
-        .query<{ n: number }, [string]>("SELECT COUNT(*) n FROM tickets WHERE user_id = ? AND status != 'closed'")
-        .get(input.userId)!.n;
+        .query<{ n: number }, [string, string]>(
+          "SELECT COUNT(*) n FROM tickets WHERE guild_id = ? AND user_id = ? AND status != 'closed'",
+        )
+        .get(input.guildId, input.userId)!.n;
       if (n >= opts.maxActivePerUser) {
         throw new TicketError(`Tu as déjà ${n} ticket(s) en cours. Ferme-en un avant d'en ouvrir un nouveau.`);
       }
     }
     const now = Date.now();
     const r = this.db
-      .query<{ id: number }, [string, string, string, string, number, number]>(
-        "INSERT INTO tickets (user_id,user_name,channel_id,subject,created_at,updated_at) VALUES (?,?,?,?,?,?) RETURNING id",
+      .query<{ id: number }, [string, string, string, string, string, number, number]>(
+        "INSERT INTO tickets (guild_id,user_id,user_name,channel_id,subject,created_at,updated_at) VALUES (?,?,?,?,?,?,?) RETURNING id",
       )
-      .get(input.userId, input.userName, input.channelId, input.subject, now, now)!;
+      .get(input.guildId, input.userId, input.userName, input.channelId, input.subject, now, now)!;
     return this.require(r.id);
   }
 
@@ -88,18 +93,31 @@ export class TicketService {
     return r ? toTicket(r) : null;
   }
 
-  list(status?: Status): Ticket[] {
-    const rows = status
-      ? this.db.query<Row, [string]>("SELECT * FROM tickets WHERE status = ? ORDER BY id DESC").all(status)
-      : this.db.query<Row, []>("SELECT * FROM tickets ORDER BY id DESC").all();
-    return rows.map(toTicket);
+  list(status?: Status, guildId?: string): Ticket[] {
+    const where: string[] = [];
+    const args: string[] = [];
+    if (status) (where.push("status = ?"), args.push(status));
+    if (guildId !== undefined) (where.push("guild_id = ?"), args.push(guildId));
+    const sql = `SELECT * FROM tickets ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC`;
+    return this.db.query<Row, string[]>(sql).all(...args).map(toTicket);
   }
 
-  stats(): Record<Status, number> {
+  /** Rattache à un serveur les tickets créés avant le support multi-serveurs. */
+  adoptOrphans(guildId: string): void {
+    this.db.query("UPDATE tickets SET guild_id = ? WHERE guild_id = ''").run(guildId);
+  }
+
+  stats(guildId?: string): Record<Status, number> {
     const out: Record<Status, number> = { open: 0, in_progress: 0, closed: 0 };
-    for (const r of this.db
-      .query<{ status: Status; n: number }, []>("SELECT status, COUNT(*) n FROM tickets GROUP BY status")
-      .all()) {
+    const rows =
+      guildId === undefined
+        ? this.db.query<{ status: Status; n: number }, []>("SELECT status, COUNT(*) n FROM tickets GROUP BY status").all()
+        : this.db
+            .query<{ status: Status; n: number }, [string]>(
+              "SELECT status, COUNT(*) n FROM tickets WHERE guild_id = ? GROUP BY status",
+            )
+            .all(guildId);
+    for (const r of rows) {
       out[r.status] = r.n;
     }
     return out;

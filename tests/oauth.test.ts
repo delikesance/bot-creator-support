@@ -14,9 +14,9 @@ const gw: Gateway = {
 };
 const cfg = { panelPassword: "pw", sessionSecret: "s".repeat(32) };
 
-const users: Record<string, { id: string; username: string }> = {
-  good: { id: "100", username: "Angelo" },
-  bad: { id: "999", username: "intrus" },
+const users: Record<string, { id: string; username: string; guilds: { id: string; permissions: string }[] }> = {
+  good: { id: "100", username: "Angelo", guilds: [] },
+  bad: { id: "999", username: "intrus", guilds: [] },
 };
 const provider: OAuthProvider = {
   authorizeUrl: (state) => `https://discord.com/oauth2/authorize?state=${state}`,
@@ -32,7 +32,7 @@ let desk: SupportDesk;
 beforeEach(() => {
   sent.length = 0;
   desk = new SupportDesk(new TicketService(openDb(":memory:")), gw);
-  handle = createHandler(desk, cfg, provider);
+  handle = createHandler(desk, cfg, provider, { list: () => [{ id: "g1", name: "Test", icon: null }] });
 });
 
 const cookieOf = (r: Response, name: string) =>
@@ -121,14 +121,14 @@ describe("avec OAuth actif", () => {
 
   test("la réponse du panel est signée du nom de l'admin Discord", async () => {
     const c = await session();
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     await handle(new Request(`http://x/api/tickets/${t.id}/reply`, { method: "POST", headers: { cookie: c }, body: JSON.stringify({ content: "Salut" }) }));
     expect(sent.at(-1)).toBe("**Angelo** : Salut");
   });
 
   test("la prise en charge est attribuée à l'admin", async () => {
     const c = await session();
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     await handle(new Request(`http://x/api/tickets/${t.id}/claim`, { method: "POST", headers: { cookie: c } }));
     expect(desk.tickets.get(t.id)!.assignee).toBe("Angelo");
   });
@@ -157,7 +157,7 @@ describe("DiscordOAuth (client HTTP)", () => {
     const u = new URL(make(fetch).authorizeUrl("abc"));
     expect(u.origin + u.pathname).toBe("https://discord.com/oauth2/authorize");
     expect(u.searchParams.get("client_id")).toBe("app");
-    expect(u.searchParams.get("scope")).toBe("identify");
+    expect(u.searchParams.get("scope")).toBe("identify guilds");
     expect(u.searchParams.get("response_type")).toBe("code");
     expect(u.searchParams.get("redirect_uri")).toBe("http://localhost:3000/auth/callback");
     expect(u.searchParams.get("state")).toBe("abc");
@@ -169,14 +169,17 @@ describe("DiscordOAuth (client HTTP)", () => {
       calls.push({ url, init });
       return url.endsWith("/oauth2/token")
         ? Response.json({ access_token: "tok" })
-        : Response.json({ id: "100", username: "Angelo", global_name: "Angelo C" });
+        : url.includes("/users/@me/guilds")
+          ? Response.json([{ id: "g1", name: "Un serveur", permissions: "32" }])
+          : Response.json({ id: "100", username: "Angelo", global_name: "Angelo C" });
     }) as unknown as typeof fetch;
     const user = await make(fake).exchange("thecode");
-    expect(user).toEqual({ id: "100", username: "Angelo C" });
+    expect(user).toEqual({ id: "100", username: "Angelo C", guilds: [{ id: "g1", permissions: "32" }] });
     const body = String(calls[0]!.init!.body);
     expect(body).toContain("code=thecode");
     expect(body).toContain("grant_type=authorization_code");
     expect(calls[1]!.url).toContain("/users/@me");
+    expect(calls[2]!.url).toContain("/users/@me/guilds");
     expect((calls[1]!.init!.headers as Record<string, string>).authorization).toBe("Bearer tok");
   });
 

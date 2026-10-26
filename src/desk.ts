@@ -2,7 +2,7 @@ import { TicketError, TicketService, type Ticket } from "./tickets";
 
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
-  createTicketChannel(o: { userId: string; userName: string }): Promise<string>;
+  createTicketChannel(o: { guildId: string; userId: string; userName: string }): Promise<string>;
   send(channelId: string, text: string, opts?: { controls?: "active" | "closed" }): Promise<void>;
   setUserLocked(channelId: string, userId: string, locked: boolean): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
@@ -22,10 +22,10 @@ export class SupportDesk {
     private opts: { maxActivePerUser?: number } = {},
   ) {}
 
-  async open(input: { userId: string; userName: string; subject: string }): Promise<Ticket> {
+  async open(input: { guildId: string; userId: string; userName: string; subject: string }): Promise<Ticket> {
     const subject = input.subject.trim().slice(0, MAX_SUBJECT);
     if (!subject) throw new TicketError("Le sujet ne peut pas être vide.");
-    this.assertQuota(input.userId);
+    this.assertQuota(input.guildId, input.userId);
 
     const channelId = await this.gw.createTicketChannel(input);
     let ticket: Ticket;
@@ -95,10 +95,10 @@ export class SupportDesk {
     this.tickets.addMessage(t.id, { authorId: author.id, authorName: author.name, content, source: "discord" });
   }
 
-  private assertQuota(userId: string) {
+  private assertQuota(guildId: string, userId: string) {
     const max = this.opts.maxActivePerUser;
     if (max === undefined) return;
-    const active = this.tickets.list().filter((t) => t.userId === userId && t.status !== "closed").length;
+    const active = this.tickets.list(undefined, guildId).filter((t) => t.userId === userId && t.status !== "closed").length;
     if (active >= max) {
       throw new TicketError(`Tu as déjà ${active} ticket(s) en cours. Ferme-en un avant d'en ouvrir un nouveau.`);
     }

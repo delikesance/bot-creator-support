@@ -3,7 +3,7 @@ import { openDb } from "../src/db";
 import { TicketService, TicketError } from "../src/tickets";
 
 let svc: TicketService;
-const base = { userId: "u1", userName: "alice", channelId: "c1", subject: "Aide" };
+const base = { userId: "u1", guildId: "g1", userName: "alice", channelId: "c1", subject: "Aide" };
 
 beforeEach(() => {
   svc = new TicketService(openDb(":memory:"));

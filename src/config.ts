@@ -6,8 +6,6 @@ export interface Config {
   testGuildId: string | null;
   /** Serveur sur lequel enregistrer les commandes ; null = global (production). */
   commandGuildId: string | null;
-  /** Serveur où les salons de tickets sont créés (null = premier serveur du bot). */
-  guildId: string | null;
   supportRoleId: string | null;
   categoryId: string | null;
   production: boolean;
@@ -43,7 +41,6 @@ export function loadConfig(env: Env): Config {
     clientId,
     testGuildId,
     commandGuildId: production ? null : testGuildId,
-    guildId: (production ? env.GUILD_ID?.trim() : testGuildId) || null,
     supportRoleId: env.SUPPORT_ROLE_ID?.trim() || null,
     categoryId: env.TICKET_CATEGORY_ID?.trim() || null,
     production,

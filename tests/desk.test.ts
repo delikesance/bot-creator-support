@@ -26,7 +26,7 @@ class FakeGateway implements Gateway {
 
 let gw: FakeGateway;
 let desk: SupportDesk;
-const user = { userId: "u1", userName: "alice" };
+const user = { userId: "u1", guildId: "g1", userName: "alice" };
 
 beforeEach(() => {
   gw = new FakeGateway();
