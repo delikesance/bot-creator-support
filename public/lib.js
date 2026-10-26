@@ -1,6 +1,6 @@
-// Briques communes du panel : DOM, icônes, API, formats, toasts, mascotte.
+// Shared panel helpers: DOM, icons, API, formats, toasts, mascot.
 
-/** Construit un élément DOM. Jamais d'innerHTML : le texte reste du texte. */
+/** Builds a DOM element. Never innerHTML: text stays text. */
 export function h(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props ?? {})) {
@@ -23,7 +23,7 @@ const svgEl = (tag, attrs, parent) => {
   return e;
 };
 
-/* ---------- Icônes (traits carrés, 24 px, héritent de currentColor) ---------- */
+/* ---------- Icons (square strokes, 24 px, inherit currentColor) ---------- */
 const ICONS = {
   search: [["circle", { cx: 11, cy: 11, r: 7 }], ["path", { d: "M20 20l-4-4" }]],
   bell: [["path", { d: "M6 17V11a6 6 0 0112 0v6l2 2H4z" }], ["path", { d: "M10 21h4" }]],
@@ -48,7 +48,7 @@ export function icon(name, size = 18) {
   return svg;
 }
 
-/* ---------- Bibi (mascotte du design system, grille 12, coins en escalier) ---------- */
+/* ---------- Bibi (design system mascot, 12 grid, stepped corners) ---------- */
 const BIBI = {
   idle: { g: "#F4F0EA", i: "#09090C", r: [[3.4, 4.8, 1.6, 1.6], [6.8, 4.8, 1.6, 1.6]], blink: true },
   welcome: { g: "#7C5CF0", i: "#09090C", r: [[3.2, 5.4, 2, .55]], l: ["6.8,6.2 7.8,4.8 8.8,6.2"] },
@@ -89,7 +89,7 @@ export async function api(path, opts = {}) {
 }
 export const post = (path, body) => api(path, { method: "POST", body: body ? JSON.stringify(body) : undefined });
 
-/** Envoi avec progression (fetch n'expose pas l'avancement du téléversement). */
+/** Upload with progress (fetch does not expose upload progress). */
 export function upload(path, form, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -109,7 +109,7 @@ export function upload(path, form, onProgress) {
 
 export const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
 };
 
 /* ---------- Formats ---------- */
@@ -123,7 +123,7 @@ export function ago(ts) {
 export const clock = (ts) => new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 export const dayLabel = (ts) => new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 
-/** Durée courte : 2h 14m, 38m, 3d 4h. */
+/** Short duration: 2h 14m, 38m, 3d 4h. */
 export function dur(ms) {
   const m = Math.max(0, Math.floor(ms / 60000));
   if (m < 1) return "<1m";
@@ -147,7 +147,7 @@ export const initials = (name) => {
 };
 export const extOf = (name) => (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? "").toLowerCase();
 
-/** Texte nettoyé pour les aperçus et messages système (le markdown Discord n'a pas de sens ici). */
+/** Text cleaned for previews and system messages (Discord markdown makes no sense here). */
 export const plain = (text) => String(text ?? "").replaceAll("**", "").replace(/^\p{Extended_Pictographic}️?\s*/u, "");
 
 /* ---------- Toasts ---------- */
@@ -162,8 +162,8 @@ export function toast(msg, ok = false) {
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 220); }, 4000);
 }
 
-/* ---------- Dialogues modaux ---------- */
-/** Pose un dialogue sur <body> ; Échap et clic extérieur le ferment, Tab reste à l'intérieur. */
+/* ---------- Modal dialogs ---------- */
+/** Mounts a dialog on <body>; Escape and outside click close it, Tab stays inside. */
 export function modal(build) {
   return new Promise((resolve) => {
     const opener = document.activeElement;
