@@ -41,6 +41,7 @@ const ICONS = {
   note: [["path", { d: "M5 4h14v12l-4 4H5z" }], ["path", { d: "M15 20v-4h4" }]],
   slash: [["path", { d: "M16 4L8 20" }]],
   out: [["path", { d: "M10 4H5v16h5M15 8l4 4-4 4M19 12H9" }]],
+  keys: [["rect", { x: 2, y: 6, width: 20, height: 12 }], ["path", { d: "M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" }]],
 };
 export function icon(name, size = 18) {
   const svg = svgEl("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2, "stroke-linecap": "square", "aria-hidden": "true", focusable: "false" });
