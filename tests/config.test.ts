@@ -63,3 +63,20 @@ describe("serveur des tickets", () => {
     expect(c.categoryId).toBeNull();
   });
 });
+
+describe("OAuth2 du panel", () => {
+  const base = { DISCORD_TOKEN: TOKEN, TEST_GUILD_ID: "1" };
+  test("désactivé sans secret", () => {
+    expect(loadConfig(base).oauthClientSecret).toBeNull();
+  });
+  test("secret, admins et URL publique", () => {
+    const c = loadConfig({ ...base, OAUTH_CLIENT_SECRET: "s", ADMIN_IDS: "1, 2 ,,3", PUBLIC_URL: "https://panel.example.com/" });
+    expect(c.oauthClientSecret).toBe("s");
+    expect(c.adminIds).toEqual(["1", "2", "3"]);
+    expect(c.redirectUri).toBe("https://panel.example.com/auth/callback");
+  });
+  test("URL publique par défaut basée sur le port", () => {
+    const c = loadConfig({ ...base, PORT: "8080" });
+    expect(c.redirectUri).toBe("http://localhost:8080/auth/callback");
+  });
+});

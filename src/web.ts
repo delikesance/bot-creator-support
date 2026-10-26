@@ -1,10 +1,12 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import type { SupportDesk } from "./desk";
+import type { OAuthProvider } from "./oauth";
 import { TicketError, type Status } from "./tickets";
 
 const STATUSES: Status[] = ["open", "in_progress", "closed"];
 const SESSION_TTL_MS = 12 * 3600_000;
+const STATE_TTL_S = 600;
 const PAGE = join(import.meta.dir, "..", "public", "index.html");
 
 interface WebConfig {
@@ -12,8 +14,23 @@ interface WebConfig {
   sessionSecret: string;
 }
 
+interface Session {
+  exp: number;
+  id: string;
+  name: string;
+}
+
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...headers } });
+
+const page = (title: string, text: string, status: number) =>
+  new Response(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
+      `<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B0B0C;color:#F4F2EE;font:16px system-ui,sans-serif">` +
+      `<div style="max-width:380px;padding:24px;text-align:center"><h1 style="font-size:22px">${title}</h1><p style="color:#C9C7C2">${text}</p>` +
+      `<a href="/" style="color:#A78BFA">Retour au panel</a></div>`,
+    { status, headers: { "content-type": "text/html; charset=utf-8" } },
+  );
 
 const safeEqual = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -21,30 +38,81 @@ const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-export function createHandler(desk: SupportDesk, cfg: WebConfig) {
+export function createHandler(desk: SupportDesk, cfg: WebConfig, oauth?: OAuthProvider) {
   const sign = (v: string) => createHmac("sha256", cfg.sessionSecret).update(v).digest("base64url");
-  const makeToken = () => {
-    const exp = String(Date.now() + SESSION_TTL_MS);
-    return `${exp}.${sign(exp)}`;
+  const makeToken = (who: { id: string; name: string }) => {
+    const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_TTL_MS, ...who })).toString("base64url");
+    return `${payload}.${sign(payload)}`;
   };
-  const validToken = (t: string | undefined) => {
-    if (!t) return false;
-    const [exp, sig] = t.split(".");
-    if (!exp || !sig || !safeEqual(sig, sign(exp))) return false;
-    return Number(exp) > Date.now();
+  const readSession = (req: Request): Session | null => {
+    const token = /(?:^|;\s*)session=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
+    const [payload, sig] = token?.split(".") ?? [];
+    if (!payload || !sig || !safeEqual(sig, sign(payload))) return null;
+    try {
+      const s = JSON.parse(Buffer.from(payload, "base64url").toString()) as Session;
+      return s.exp > Date.now() ? s : null;
+    } catch {
+      return null;
+    }
   };
-  const sessionOf = (req: Request) =>
-    /(?:^|;\s*)session=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
-  const cookie = (v: string, maxAge: number) =>
-    `session=${v}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+  const cookie = (name: string, v: string, maxAge: number, opts: { path?: string } = {}) =>
+    `${name}=${v}; HttpOnly; SameSite=Lax; Path=${opts.path ?? "/"}; Max-Age=${maxAge}`;
 
-  // Anti brute-force simple : 5 échecs / minute (global, le panel n'a qu'un mot de passe).
+  // Anti brute-force simple pour le mot de passe : 5 échecs / minute (global).
   const failures: number[] = [];
   const throttled = () => {
     const now = Date.now();
     while (failures.length && failures[0]! < now - 60_000) failures.shift();
     return failures.length >= 5;
   };
+
+  async function handleAuth(req: Request, url: URL): Promise<Response> {
+    if (!oauth) return json({ error: "Not found" }, 404);
+
+    if (url.pathname === "/auth/login") {
+      const state = randomBytes(16).toString("hex");
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: oauth.authorizeUrl(state),
+          "set-cookie": cookie("oauth_state", `${state}.${sign(state)}`, STATE_TTL_S, { path: "/auth" }),
+        },
+      });
+    }
+
+    if (url.pathname === "/auth/callback") {
+      const raw = /(?:^|;\s*)oauth_state=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
+      const [state, sig] = raw?.split(".") ?? [];
+      const clear = cookie("oauth_state", "", 0, { path: "/auth" });
+      const fail = (title: string, text: string, status = 400) => {
+        const r = page(title, text, status);
+        r.headers.append("set-cookie", clear);
+        return r;
+      };
+      if (!state || !sig || !safeEqual(sig, sign(state)) || url.searchParams.get("state") !== state) {
+        return fail("Connexion invalide", "La session de connexion a expiré ou est invalide. Réessaie.");
+      }
+      const code = url.searchParams.get("code");
+      if (url.searchParams.get("error") || !code) return fail("Connexion annulée", "Discord n'a pas autorisé la connexion.");
+
+      let user;
+      try {
+        user = await oauth.exchange(code);
+      } catch (e) {
+        console.error("OAuth:", e);
+        return fail("Connexion impossible", "Discord a refusé la connexion. Réessaie.");
+      }
+      if (!oauth.isAdmin(user.id)) {
+        return fail("Accès refusé", "Ton compte Discord n'est pas administrateur de ce panel.", 403);
+      }
+      const headers = new Headers({ location: "/" });
+      headers.append("set-cookie", clear);
+      headers.append("set-cookie", cookie("session", makeToken({ id: user.id, name: user.username }), SESSION_TTL_MS / 1000));
+      return new Response(null, { status: 302, headers });
+    }
+
+    return json({ error: "Not found" }, 404);
+  }
 
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -54,23 +122,30 @@ export function createHandler(desk: SupportDesk, cfg: WebConfig) {
       return new Response(Bun.file(PAGE), { headers: { "content-type": "text/html; charset=utf-8" } });
     }
     if (path === "/health") return json({ ok: true });
+    if (path.startsWith("/auth/") && req.method === "GET") return handleAuth(req, url);
+    if (path === "/api/config") return json({ oauth: !!oauth });
 
     if (path === "/api/login" && req.method === "POST") {
+      if (oauth) return json({ error: "Not found" }, 404);
       if (throttled()) return json({ error: "Trop de tentatives, réessaie dans une minute." }, 429);
       const body = (await req.json().catch(() => ({}))) as { password?: string };
       if (typeof body.password !== "string" || !safeEqual(body.password, cfg.panelPassword)) {
         failures.push(Date.now());
         return json({ error: "Mot de passe incorrect." }, 401);
       }
-      return json({ ok: true }, 200, { "set-cookie": cookie(makeToken(), SESSION_TTL_MS / 1000) });
+      return json({ ok: true }, 200, {
+        "set-cookie": cookie("session", makeToken({ id: "panel", name: "Support" }), SESSION_TTL_MS / 1000),
+      });
     }
 
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404);
-    if (!validToken(sessionOf(req))) return json({ error: "Non authentifié." }, 401);
+    const session = readSession(req);
+    if (!session) return json({ error: "Non authentifié." }, 401);
 
     if (path === "/api/logout" && req.method === "POST") {
-      return json({ ok: true }, 200, { "set-cookie": cookie("", 0) });
+      return json({ ok: true }, 200, { "set-cookie": cookie("session", "", 0) });
     }
+    if (path === "/api/me") return json({ id: session.id, name: session.name });
 
     try {
       if (path === "/api/tickets" && req.method === "GET") {
@@ -89,10 +164,10 @@ export function createHandler(desk: SupportDesk, cfg: WebConfig) {
           return json({ ticket, messages: desk.tickets.messages(id) });
         }
         if (action && req.method === "POST") {
-          const by = "Support";
+          const by = session.name;
           switch (action) {
             case "claim":
-              return json({ ticket: await desk.claim(id, { id: "panel", name: by }) });
+              return json({ ticket: await desk.claim(id, { id: session.id, name: by }) });
             case "release":
               return json({ ticket: await desk.release(id, by) });
             case "close":

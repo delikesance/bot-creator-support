@@ -18,10 +18,19 @@ bun run start            # bot + panel sur http://localhost:3000
 | `DISCORD_TOKEN` | Token du bot (requis) |
 | `TEST_GUILD_ID` | Serveur de test : en dev, les commandes ne sont enregistrées **que** là (requis hors production) |
 | `NODE_ENV=production` | Commandes enregistrées globalement ; utiliser `GUILD_ID` pour le serveur des tickets |
-| `PANEL_PASSWORD` | Mot de passe du panel (généré et affiché au démarrage si absent) |
+| `OAUTH_CLIENT_SECRET` | Active la connexion au panel via Discord (OAuth2). Vide = mot de passe |
+| `PUBLIC_URL` | Adresse du panel (défaut `http://localhost:PORT`) ; la redirection OAuth2 est `PUBLIC_URL/auth/callback` |
+| `ADMIN_IDS` | IDs Discord autorisés, séparés par des virgules (vide = propriétaire de l'application) |
+| `PANEL_PASSWORD` | Mode sans OAuth : mot de passe du panel (généré et affiché au démarrage si absent) |
 | `SUPPORT_ROLE_ID`, `TICKET_CATEGORY_ID` | Optionnels : rôle staff et catégorie des salons |
 
 Le bot demande l'intent privilégié **Message Content** (portail développeur Discord) pour historiser les messages.
+
+## Connexion Discord (OAuth2)
+
+1. Portail développeur Discord, application du bot, onglet **OAuth2** : copier le *Client Secret* dans `OAUTH_CLIENT_SECRET`.
+2. Dans *Redirects*, ajouter exactement `PUBLIC_URL/auth/callback` (ex. `http://localhost:3000/auth/callback`).
+3. Seuls les comptes de `ADMIN_IDS` (ou le propriétaire de l'application) accèdent au panel ; leurs réponses sont signées de leur pseudo Discord.
 
 ## Docker
 

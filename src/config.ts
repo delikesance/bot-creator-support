@@ -16,6 +16,10 @@ export interface Config {
   panelPassword: string;
   passwordGenerated: boolean;
   sessionSecret: string;
+  /** OAuth2 Discord du panel : actif seulement si le secret est fourni. */
+  oauthClientSecret: string | null;
+  adminIds: string[];
+  redirectUri: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -48,5 +52,8 @@ export function loadConfig(env: Env): Config {
     panelPassword: env.PANEL_PASSWORD || randomBytes(9).toString("base64url"),
     passwordGenerated,
     sessionSecret: env.SESSION_SECRET || randomBytes(32).toString("hex"),
+    oauthClientSecret: env.OAUTH_CLIENT_SECRET?.trim() || null,
+    adminIds: (env.ADMIN_IDS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
+    redirectUri: `${(env.PUBLIC_URL?.trim() || `http://localhost:${Number(env.PORT) || 3000}`).replace(/\/+$/, "")}/auth/callback`,
   };
 }
