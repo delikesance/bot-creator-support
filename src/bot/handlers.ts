@@ -13,6 +13,7 @@ export interface Ix {
   /** Permission « Gérer les salons » ou rôle support. */
   isStaff: boolean;
   subject?: string;
+  description?: string;
   /** Réponse visible uniquement par l'auteur. */
   reply(text: string): Promise<void>;
   showSubjectModal(): Promise<void>;
@@ -39,7 +40,7 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   if (kind === "modal" && id === "ticket:modal") {
-    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "" });
+    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "", description: ix.description });
     return ix.reply(`✅ Ton ticket #${t.id} est ouvert : <#${t.channelId}>`);
   }
 

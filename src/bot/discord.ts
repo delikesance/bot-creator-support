@@ -122,6 +122,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     channelId: i.channelId ?? "",
     isStaff: !!i.memberPermissions?.has(PermissionFlagsBits.ManageChannels) || hasRole,
     subject: i.isModalSubmit() ? i.fields.getTextInputValue("subject") : undefined,
+    description: i.isModalSubmit() ? i.fields.getTextInputValue("description") : undefined,
     reply,
     showSubjectModal: async () => {
       if (i.isChatInputCommand() || i.isButton()) {
@@ -133,9 +134,20 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
               new ActionRowBuilder<TextInputBuilder>().addComponents(
                 new TextInputBuilder()
                   .setCustomId("subject")
-                  .setLabel("Décris ton problème en une phrase")
+                  .setLabel("Titre")
+                  .setPlaceholder("Ex. : Impossible de me connecter")
                   .setStyle(TextInputStyle.Short)
                   .setMaxLength(100)
+                  .setRequired(true),
+              ),
+              new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                  .setCustomId("description")
+                  .setLabel("Description détaillée")
+                  .setPlaceholder("Que s'est-il passé ? Que voulais-tu faire ? Messages d'erreur, étapes pour reproduire…")
+                  .setStyle(TextInputStyle.Paragraph)
+                  .setMinLength(20)
+                  .setMaxLength(1000)
                   .setRequired(true),
               ),
             ),

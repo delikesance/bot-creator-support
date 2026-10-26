@@ -14,6 +14,7 @@ export interface Actor {
 }
 
 const MAX_SUBJECT = 100;
+const MAX_DESCRIPTION = 1000;
 
 export class SupportDesk {
   constructor(
@@ -22,23 +23,34 @@ export class SupportDesk {
     private opts: { maxActivePerUser?: number } = {},
   ) {}
 
-  async open(input: { guildId: string; userId: string; userName: string; subject: string }): Promise<Ticket> {
+  async open(input: {
+    guildId: string;
+    userId: string;
+    userName: string;
+    subject: string;
+    description?: string;
+  }): Promise<Ticket> {
     const subject = input.subject.trim().slice(0, MAX_SUBJECT);
+    const description = (input.description ?? "").trim().slice(0, MAX_DESCRIPTION);
     if (!subject) throw new TicketError("Le sujet ne peut pas être vide.");
     this.assertQuota(input.guildId, input.userId);
 
     const channelId = await this.gw.createTicketChannel(input);
     let ticket: Ticket;
     try {
-      ticket = this.tickets.create({ ...input, subject, channelId }, this.opts);
+      ticket = this.tickets.create({ ...input, subject, description, channelId }, this.opts);
     } catch (e) {
       await this.gw.deleteChannel(channelId).catch(() => {});
       throw e;
     }
     this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: subject, source: "system" });
+    if (description) {
+      this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: description, source: "discord" });
+    }
+    const quoted = description ? `\n**Description :**\n${description.split("\n").map((l) => `> ${l}`).join("\n")}\n` : "";
     await this.gw.send(
       channelId,
-      `🎫 **Ticket #${ticket.id}** — <@${input.userId}>\n**Sujet :** ${subject}\n\nDécris ton problème ici, l'équipe support te répondra rapidement.`,
+      `🎫 **Ticket #${ticket.id}** — <@${input.userId}>\n**Sujet :** ${subject}\n${quoted}\nAjoute ici tout ce qui peut aider, l'équipe support te répondra rapidement.`,
       { controls: "active" },
     );
     return ticket;
