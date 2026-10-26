@@ -153,6 +153,7 @@ export class SupportDesk {
   }
 
   async reopen(id: number, by: string): Promise<Ticket> {
+    if (this.tickets.get(id)?.channelDeletedAt) throw new TicketError("The Discord channel was deleted, so this ticket cannot be reopened.", "conflict");
     const t = this.tickets.reopen(id, by);
     await this.gw.setUserLocked(t.channelId, t.userId, false).catch(() => {});
     await this.notify(t, `🟢 Ticket reopened by **${by}**.`, undefined, pack(t.locale).noticeReopened);
@@ -163,8 +164,15 @@ export class SupportDesk {
     const t = this.tickets.get(id);
     if (!t) throw new TicketError(`Ticket #${id} not found.`, "not_found");
     if (t.status !== "closed") throw new TicketError("Close the ticket before deleting its channel.", "not_closed");
+    if (t.channelDeletedAt) return;
     await this.gw.deleteChannel(t.channelId);
-    this.tickets.log(id, by, "delete_channel", t.channelId);
+    this.tickets.markChannelDeleted(id, by, t.channelId);
+  }
+
+  /** Le salon d'un ticket a été supprimé dans Discord : on le garde en mémoire pour l'afficher dans le panel. */
+  channelRemoved(channelId: string): void {
+    const t = this.tickets.getByChannel(channelId);
+    if (t) this.tickets.markChannelDeleted(t.id, "Discord", "deleted in Discord");
   }
 
   /** Attribue le ticket (ou le libère avec null). `userId` : identifiant Discord si c'est l'appelant, sinon null. */
@@ -206,6 +214,7 @@ export class SupportDesk {
     const t = this.tickets.get(id);
     if (!t) throw new TicketError(`Ticket #${id} not found.`, "not_found");
     if (t.status === "closed") throw new TicketError("This ticket is closed.", "closed");
+    if (t.channelDeletedAt) throw new TicketError("The Discord channel was deleted, so nothing can be sent to the customer.", "conflict");
     const text = formatLinks(content);
     if (!text && !files.length) throw new TicketError("The message is empty.");
     if (text.length > MAX_MESSAGE) throw new TicketError(`The message is over ${MAX_MESSAGE} characters.`);

@@ -30,6 +30,8 @@ export interface Ticket {
   tags: string[];
   assigneeId: string | null;
   closeReason: CloseReason | null;
+  /** Quand le salon Discord a disparu (supprimé depuis le panel ou dans Discord) ; null tant qu'il existe. */
+  channelDeletedAt: number | null;
   /** Note du client, de 1 à 5. */
   rating: number | null;
   /** Premier message public du support. */
@@ -159,6 +161,7 @@ interface Row {
   tags: string;
   assignee_id: string | null;
   close_reason: CloseReason | null;
+  channel_deleted_at: number | null;
   rating: number | null;
   first_response_at: number | null;
   waiting_since: number | null;
@@ -213,6 +216,7 @@ const toTicket = (r: Row): Ticket => ({
   tags: parseTags(r.tags),
   assigneeId: r.assignee_id,
   closeReason: r.close_reason,
+  channelDeletedAt: r.channel_deleted_at,
   rating: r.rating,
   firstResponseAt: r.first_response_at,
   waitingSince: r.waiting_since,
@@ -579,6 +583,14 @@ export class TicketService {
   }
 
   /** Met à jour un champ sans toucher à l'ordre de la liste, puis notifie. */
+  /** Note que le salon du ticket n'existe plus. Sans effet si c'est déjà fait. */
+  markChannelDeleted(id: number, actor: string, detail: string): Ticket {
+    const t = this.require(id);
+    if (t.channelDeletedAt) return t;
+    this.log(id, actor, "delete_channel", detail);
+    return this.patch(id, "channel_deleted_at = ?", Date.now());
+  }
+
   private patch(id: number, set: string, value: string | number): Ticket {
     this.db.query(`UPDATE tickets SET ${set} WHERE id = ?`).run(value, id);
     this.emit("ticket", id);

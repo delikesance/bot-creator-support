@@ -327,6 +327,7 @@ function timerFor(t) {
 }
 
 function waitLabel(t) {
+  if (t.channelDeletedAt) return h("span", { class: "wait", style: "--c:var(--danger-ink)", title: "The Discord channel was deleted" }, h("span", { class: "sq", style: "--c:var(--danger)" }), "Channel deleted");
   if (!isOpen(t)) return h("span", { class: "wait", style: "--c:var(--faint)" }, h("span", { class: "sq" }), "Closed");
   return t.awaiting === "support"
     ? h("span", { class: "wait", style: "--c:var(--accent-ink)" }, h("span", { class: "sq" }), "Waiting on us")
@@ -730,10 +731,12 @@ function renderTicket() {
   if (keep === null) msgs.dataset.stick = "1";
   requestAnimationFrame(() => { msgs.scrollTop = keep ?? msgs.scrollHeight; });
 
+  const gone = !!t.channelDeletedAt;
   const buttons = isOpen(t)
     ? [act("Close ticket", "close", "caution", async () => { await closeFlow(t); return false; })]
+    : gone ? []
     : [act("Reopen", "reopen", "hero", async () => true), act("Delete channel", "delete", "caution", () => confirmDialog("Delete the channel?", "The Discord channel is deleted for good. The history stays in the desk.", "Delete channel"))];
-  const wait = isOpen(t) ? waitLabel(t) : null;
+  const wait = isOpen(t) || gone ? waitLabel(t) : null;
   return h("div", { class: "ticket" + (state.slide ? " slide" : "") },
     h("div", { class: "subbar" },
       h("button", { class: "btn ghost", type: "button", title: "Back to the inbox (Esc)", onclick: closeTicket }, icon("back", 16), "Inbox"),
@@ -741,7 +744,13 @@ function renderTicket() {
         h("div", { class: "line" }, h("span", { class: "eyebrow" }, `Ticket #${t.id}`), h("span", { class: "badge", style: `border-color:${s.color}55` }, h("span", { class: "sq", style: `--c:${s.color}` }), s.label), wait),
         h("h1", {}, t.subject)),
       h("div", { class: "acts" }, assigneeControl(t, "lg"), priorityControl(t, "lg"), h("button", { class: "btn ghost details-btn", type: "button", onclick: () => openSheet(d) }, "Details"), h("a", { class: "btn ghost", href: `/api/tickets/${t.id}/transcript`, download: `ticket-${t.id}.txt`, title: "Download the public messages as a text file" }, icon("download", 16), "Transcript"), buttons)),
-    h("div", { class: "cols" }, h("section", { class: "convo", "aria-label": "Conversation" }, msgs, c.el, c.overlay), renderAside(d)));
+    h("div", { class: "cols" }, h("section", { class: "convo", "aria-label": "Conversation" }, gone ? goneBanner(t) : null, msgs, c.el, c.overlay), renderAside(d)));
+}
+
+function goneBanner(t) {
+  return h("div", { class: "gone-banner", role: "status" }, icon("x", 16),
+    h("div", {}, h("b", {}, `The Discord channel was deleted ${ago(t.channelDeletedAt)}.`),
+      h("span", {}, " The history stays here, but nothing can be sent to the customer and the ticket cannot be reopened.")));
 }
 
 /* ---------- Render ---------- */

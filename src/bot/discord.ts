@@ -255,6 +255,8 @@ export async function startBot(cfg: Config, desk: SupportDesk, makeGateway: (c: 
     await handleInteraction(desk, ix);
   });
 
+  client.on(Events.ChannelDelete, (c) => desk.channelRemoved(c.id));
+
   client.on(Events.MessageCreate, (m) => {
     if (m.author.bot || !m.inGuild()) return;
     // Les pièces jointes sont téléchargées par le desk : l'URL du CDN expire, le panel sert sa propre copie.
