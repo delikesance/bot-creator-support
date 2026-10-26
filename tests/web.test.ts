@@ -98,10 +98,10 @@ describe("tickets", () => {
     expect(r.status).toBe(200);
     expect(sent.at(-1)).toBe("Salut");
   });
-  test("reply vide : 409", async () => {
+  test("reply vide : 400", async () => {
     const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const r = await authed(`/api/tickets/${t.id}/reply`, { method: "POST", body: JSON.stringify({ content: "" }) });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(400);
   });
   test("route inconnue : 404", async () => {
     expect((await authed("/api/nope")).status).toBe(404);

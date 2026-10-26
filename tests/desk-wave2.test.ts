@@ -123,7 +123,7 @@ describe("transcription", () => {
     expect(txt).toContain("alice: ça plante");
     expect(txt).toContain("Angelo: On regarde");
     expect(txt).not.toContain("note privée");
-    expect(txt).not.toContain("Pris en charge");
+    expect(txt).not.toContain("Picked up");
   });
   test("buildTranscript indente les lignes suivantes et liste les fichiers", () => {
     const t = { id: 1, subject: "S", userName: "u", createdAt: Date.UTC(2026, 0, 2, 3, 4), closedAt: null } as never;
@@ -133,7 +133,7 @@ describe("transcription", () => {
     expect(buildTranscript(t, m)).toBe("Ticket #1: S\nCustomer: u\nOpened: 2026-01-02 03:04 UTC\n\n[2026-01-02 03:05 UTC] u: a\n    b\n    [file] x.png\n");
   });
   test("ticket inconnu", () => {
-    expect(() => desk.transcript(99)).toThrow(/introuvable/);
+    expect(() => desk.transcript(99)).toThrow(/not found/);
   });
 });
 

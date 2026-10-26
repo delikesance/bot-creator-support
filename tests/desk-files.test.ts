@@ -95,7 +95,7 @@ describe("réponse avec fichiers", () => {
   test("stockage non configuré : fichiers refusés", async () => {
     const d = new SupportDesk(new TicketService(openDb(":memory:")), gw);
     const t = await d.open({ ...user, subject: "a" });
-    await expect(d.reply(t.id, "x", "A", undefined, [{ name: "a.png", data: png }])).rejects.toThrow(/stockage/);
+    await expect(d.reply(t.id, "x", "A", undefined, [{ name: "a.png", data: png }])).rejects.toThrow(/storage/);
   });
 });
 
@@ -141,7 +141,7 @@ describe("pièces jointes des clients", () => {
       file("fake.png", "https://cdn/fake.png"),
       file("gros.zip", "https://cdn/gros.zip", 30 * 1024 * 1024),
     ]);
-    const notes = desk.tickets.messages(t.id).filter((x) => x.content.startsWith("⚠️ Pièce jointe"));
+    const notes = desk.tickets.messages(t.id).filter((x) => x.content.startsWith("⚠️ Attachment"));
     expect(notes).toHaveLength(3);
   });
   test("ordre conservé : un message sans fichier après un message avec fichier", async () => {

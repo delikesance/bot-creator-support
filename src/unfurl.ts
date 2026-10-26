@@ -91,12 +91,12 @@ export function isPrivateIp(ip: string): boolean {
 
 /** L'URL est-elle une cible sûre ? Lève si le schéma, les identifiants ou l'adresse résolue sont refusés. */
 async function assertPublic(u: URL, deps: UnfurlDeps): Promise<void> {
-  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("schéma refusé");
-  if (u.username || u.password) throw new Error("identifiants dans l'URL refusés");
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme refused");
+  if (u.username || u.password) throw new Error("credentials in the URL refused");
   const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (!host) throw new Error("hôte manquant");
+  if (!host) throw new Error("missing host");
   const ips = isIP(host) ? [host] : await deps.resolve(host);
-  if (!ips.length || ips.some(isPrivateIp)) throw new Error("adresse non publique");
+  if (!ips.length || ips.some(isPrivateIp)) throw new Error("non-public address");
 }
 
 /** Lit au plus MAX_BYTES du corps. */

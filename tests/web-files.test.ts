@@ -68,9 +68,9 @@ describe("reply multipart", () => {
     const t = await open();
     expect((await call(`/api/tickets/${t.id}/reply`, multipart("", [{ name: "a.png", data: png }]))).status).toBe(200);
   });
-  test("ni texte ni fichier : 409 comme avant", async () => {
+  test("ni texte ni fichier : 400", async () => {
     const t = await open();
-    expect((await call(`/api/tickets/${t.id}/reply`, multipart("", []))).status).toBe(409);
+    expect((await call(`/api/tickets/${t.id}/reply`, multipart("", []))).status).toBe(400);
   });
   test("JSON toujours accepté", async () => {
     const t = await open();
