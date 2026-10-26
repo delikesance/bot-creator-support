@@ -35,15 +35,18 @@ const closedRow = () =>
 export class DiscordGateway implements Gateway {
   constructor(
     private client: Client,
-    private cfg: Pick<Config, "guildId" | "supportRoleId" | "categoryId">,
+    private cfg: Pick<Config, "supportRoleId" | "categoryId">,
   ) {}
 
-  private async guild(): Promise<Guild> {
-    const g = this.cfg.guildId
-      ? await this.client.guilds.fetch(this.cfg.guildId)
-      : this.client.guilds.cache.first();
-    if (!g) throw new Error("Le bot n'est présent sur aucun serveur.");
+  private async guild(id: string): Promise<Guild> {
+    const g = await this.client.guilds.fetch(id).catch(() => null);
+    if (!g) throw new Error("Le bot n'est plus présent sur ce serveur.");
     return g;
+  }
+
+  /** Serveurs où le bot est présent (alimente le sélecteur du panel). */
+  list(): { id: string; name: string; icon: string | null }[] {
+    return this.client.guilds.cache.map((g) => ({ id: g.id, name: g.name, icon: g.iconURL({ size: 64 }) }));
   }
 
   private async channel(id: string): Promise<TextChannel> {
@@ -52,8 +55,8 @@ export class DiscordGateway implements Gateway {
     return c;
   }
 
-  async createTicketChannel(o: { userId: string; userName: string }): Promise<string> {
-    const guild = await this.guild();
+  async createTicketChannel(o: { guildId: string; userId: string; userName: string }): Promise<string> {
+    const guild = await this.guild(o.guildId);
     const allow = [
       PermissionFlagsBits.ViewChannel,
       PermissionFlagsBits.SendMessages,
@@ -115,6 +118,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     id: i.isChatInputCommand() ? i.commandName : i.customId,
     userId: i.user.id,
     userName: i.user.username,
+    guildId: i.guildId,
     channelId: i.channelId ?? "",
     isStaff: !!i.memberPermissions?.has(PermissionFlagsBits.ManageChannels) || hasRole,
     subject: i.isModalSubmit() ? i.fields.getTextInputValue("subject") : undefined,

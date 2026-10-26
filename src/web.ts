@@ -18,7 +18,32 @@ interface Session {
   exp: number;
   id: string;
   name: string;
+  /** Accès à tous les serveurs où le bot est présent (super-admin ou mot de passe). */
+  all: boolean;
+  /** Sinon : serveurs où l'utilisateur a « Gérer le serveur » ou « Administrateur ». */
+  guilds: string[];
 }
+
+export interface GuildInfo {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+/** Serveurs où le bot est présent. */
+export interface GuildDirectory {
+  list(): GuildInfo[];
+}
+
+const ADMINISTRATOR = 0x8n;
+const MANAGE_GUILD = 0x20n;
+const canManage = (permissions: string) => {
+  try {
+    return (BigInt(permissions) & (ADMINISTRATOR | MANAGE_GUILD)) !== 0n;
+  } catch {
+    return false;
+  }
+};
 
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...headers } });
@@ -38,9 +63,15 @@ const safeEqual = (a: string, b: string) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
-export function createHandler(desk: SupportDesk, cfg: WebConfig, oauth?: OAuthProvider) {
+export function createHandler(
+  desk: SupportDesk,
+  cfg: WebConfig,
+  oauth?: OAuthProvider,
+  directory: GuildDirectory = { list: () => [] },
+) {
+  const accessible = (s: Session) => directory.list().filter((g) => s.all || s.guilds.includes(g.id));
   const sign = (v: string) => createHmac("sha256", cfg.sessionSecret).update(v).digest("base64url");
-  const makeToken = (who: { id: string; name: string }) => {
+  const makeToken = (who: { id: string; name: string; all: boolean; guilds: string[] }) => {
     const payload = Buffer.from(JSON.stringify({ exp: Date.now() + SESSION_TTL_MS, ...who })).toString("base64url");
     return `${payload}.${sign(payload)}`;
   };
@@ -102,12 +133,19 @@ export function createHandler(desk: SupportDesk, cfg: WebConfig, oauth?: OAuthPr
         console.error("OAuth:", e);
         return fail("Connexion impossible", "Discord a refusé la connexion. Réessaie.");
       }
-      if (!oauth.isAdmin(user.id)) {
-        return fail("Accès refusé", "Ton compte Discord n'est pas administrateur de ce panel.", 403);
+      const all = oauth.isAdmin(user.id);
+      const guilds = user.guilds.filter((g) => canManage(g.permissions)).map((g) => g.id);
+      const hasAccess = all || directory.list().some((g) => guilds.includes(g.id));
+      if (!hasAccess) {
+        return fail(
+          "Accès refusé",
+          "Tu dois avoir la permission « Gérer le serveur » sur un serveur où le bot est présent.",
+          403,
+        );
       }
       const headers = new Headers({ location: "/" });
       headers.append("set-cookie", clear);
-      headers.append("set-cookie", cookie("session", makeToken({ id: user.id, name: user.username }), SESSION_TTL_MS / 1000));
+      headers.append("set-cookie", cookie("session", makeToken({ id: user.id, name: user.username, all, guilds: all ? [] : guilds }), SESSION_TTL_MS / 1000));
       return new Response(null, { status: 302, headers });
     }
 
@@ -134,7 +172,7 @@ export function createHandler(desk: SupportDesk, cfg: WebConfig, oauth?: OAuthPr
         return json({ error: "Mot de passe incorrect." }, 401);
       }
       return json({ ok: true }, 200, {
-        "set-cookie": cookie("session", makeToken({ id: "panel", name: "Support" }), SESSION_TTL_MS / 1000),
+        "set-cookie": cookie("session", makeToken({ id: "panel", name: "Support", all: true, guilds: [] }), SESSION_TTL_MS / 1000),
       });
     }
 
@@ -147,20 +185,41 @@ export function createHandler(desk: SupportDesk, cfg: WebConfig, oauth?: OAuthPr
     }
     if (path === "/api/me") return json({ id: session.id, name: session.name });
 
+    if (path === "/api/guilds") {
+      return json({
+        guilds: accessible(session).map((g) => ({ ...g, stats: desk.tickets.stats(g.id) })),
+      });
+    }
+
+    /** Un serveur accessible à la session, ou null. */
+    const canAccess = (guildId: string) => accessible(session).some((g) => g.id === guildId);
+
     try {
       if (path === "/api/tickets" && req.method === "GET") {
         const status = url.searchParams.get("status");
         if (status && !STATUSES.includes(status as Status)) return json({ error: "Statut invalide." }, 400);
-        return json({ tickets: desk.tickets.list((status as Status) || undefined), stats: desk.tickets.stats() });
+        let guildId = url.searchParams.get("guild");
+        if (!guildId) {
+          const all = accessible(session);
+          if (all.length !== 1) return json({ error: "Choisis un serveur (paramètre guild)." }, 400);
+          guildId = all[0]!.id;
+        }
+        if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
+        return json({
+          tickets: desk.tickets.list((status as Status) || undefined, guildId),
+          stats: desk.tickets.stats(guildId),
+        });
       }
 
       const m = /^\/api\/tickets\/(\d+)(?:\/(\w+))?$/.exec(path);
       if (m) {
         const id = Number(m[1]);
         const action = m[2];
+        // Un ticket d'un serveur non autorisé est indiscernable d'un ticket inexistant.
+        const owned = desk.tickets.get(id);
+        if (!owned || !canAccess(owned.guildId)) return json({ error: `Ticket #${id} introuvable.` }, 404);
         if (!action && req.method === "GET") {
-          const ticket = desk.tickets.get(id);
-          if (!ticket) return json({ error: `Ticket #${id} introuvable.` }, 404);
+          const ticket = owned;
           return json({ ticket, messages: desk.tickets.messages(id) });
         }
         if (action && req.method === "POST") {

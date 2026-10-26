@@ -8,6 +8,7 @@ export interface Ix {
   id: string;
   userId: string;
   userName: string;
+  guildId: string;
   channelId: string;
   /** Permission « Gérer les salons » ou rôle support. */
   isStaff: boolean;
@@ -38,7 +39,7 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   if (kind === "modal" && id === "ticket:modal") {
-    const t = await desk.open({ userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "" });
+    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "" });
     return ix.reply(`✅ Ton ticket #${t.id} est ouvert : <#${t.channelId}>`);
   }
 

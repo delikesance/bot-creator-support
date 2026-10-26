@@ -22,7 +22,7 @@ const subjects: [string, string][] = [
   ["emma", "Comment changer mon pseudo ?"],
 ];
 for (const [user, subject] of subjects) {
-  const t = await desk.open({ userId: user, userName: user, subject });
+  const t = await desk.open({ guildId: "g1", userId: user, userName: user, subject });
   desk.recordDiscordMessage(t.channelId, { id: user, name: user }, "Bonjour, j'ai besoin d'aide s'il vous plaît.");
 }
 await desk.claim(2, { id: "a", name: "Support" });
@@ -30,11 +30,22 @@ await desk.reply(2, "Bonjour Bob, je regarde votre facture tout de suite.", "Sup
 await desk.claim(3, { id: "a", name: "Support" });
 await desk.close(4, "Support");
 await desk.close(5, "Support");
+for (const [user, subject] of [["farid", "Mon bot ne répond plus"], ["gaëlle", "Accès au salon VIP"]] as const) {
+  const t = await desk.open({ guildId: "g2", userId: user, userName: user, subject });
+  desk.recordDiscordMessage(t.channelId, { id: user, name: user }, "Bonjour, pouvez-vous m'aider ?");
+}
+const directory = {
+  list: () => [
+    { id: "g1", name: "Serveur de test", icon: null },
+    { id: "g2", name: "Communauté Bot Creator", icon: null },
+    { id: "g3", name: "Atelier", icon: null },
+  ],
+};
 const fakeOAuth: OAuthProvider = {
   authorizeUrl: (state) => `/auth/callback?code=ok&state=${state}`,
-  exchange: async () => ({ id: "1", username: "Angelo" }),
+  exchange: async () => ({ id: "1", username: "Angelo", guilds: [] }),
   isAdmin: () => true,
 };
 const oauth = process.argv.includes("oauth") ? fakeOAuth : undefined;
-Bun.serve({ port: 3200, fetch: createHandler(desk, { panelPassword: "demo", sessionSecret: "d".repeat(32) }, oauth) });
+Bun.serve({ port: 3200, fetch: createHandler(desk, { panelPassword: "demo", sessionSecret: "d".repeat(32) }, oauth, directory) });
 console.log("Démo sur http://localhost:3200 (mot de passe : demo)");

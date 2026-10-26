@@ -31,7 +31,7 @@ async function authed(path: string, init: RequestInit = {}) {
 beforeEach(() => {
   sent.length = 0;
   desk = new SupportDesk(new TicketService(openDb(":memory:")), gw);
-  handle = createHandler(desk, cfg);
+  handle = createHandler(desk, cfg, undefined, { list: () => [{ id: "g1", name: "Test", icon: null }] });
 });
 
 describe("auth", () => {
@@ -63,8 +63,8 @@ describe("auth", () => {
 
 describe("tickets", () => {
   test("liste + stats + filtre par statut", async () => {
-    const a = await desk.open({ userId: "u", userName: "alice", subject: "a" });
-    await desk.open({ userId: "v", userName: "bob", subject: "b" });
+    const a = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
+    await desk.open({ userId: "v", guildId: "g1", userName: "bob", subject: "b" });
     await desk.claim(a.id, { id: "x", name: "admin" });
     const all = await (await authed("/api/tickets")).json();
     expect(all.tickets).toHaveLength(2);
@@ -76,14 +76,14 @@ describe("tickets", () => {
     expect((await authed("/api/tickets?status=zzz")).status).toBe(400);
   });
   test("détail avec messages, 404 si inconnu", async () => {
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const d = await (await authed(`/api/tickets/${t.id}`)).json();
     expect(d.ticket.id).toBe(t.id);
     expect(Array.isArray(d.messages)).toBe(true);
     expect((await authed("/api/tickets/999")).status).toBe(404);
   });
   test("claim / release / close / reopen", async () => {
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const post = (a: string) => authed(`/api/tickets/${t.id}/${a}`, { method: "POST" });
     expect((await (await post("claim")).json()).ticket.status).toBe("in_progress");
     expect((await (await post("release")).json()).ticket.status).toBe("open");
@@ -91,17 +91,17 @@ describe("tickets", () => {
     expect((await (await post("reopen")).json()).ticket.status).toBe("open");
   });
   test("transition invalide : 409", async () => {
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     expect((await authed(`/api/tickets/${t.id}/reopen`, { method: "POST" })).status).toBe(409);
   });
   test("reply envoie dans Discord", async () => {
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const r = await authed(`/api/tickets/${t.id}/reply`, { method: "POST", body: JSON.stringify({ content: "Salut" }) });
     expect(r.status).toBe(200);
     expect(sent.at(-1)).toBe("**Support** : Salut");
   });
   test("reply vide : 409", async () => {
-    const t = await desk.open({ userId: "u", userName: "alice", subject: "a" });
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     const r = await authed(`/api/tickets/${t.id}/reply`, { method: "POST", body: JSON.stringify({ content: "" }) });
     expect(r.status).toBe(409);
   });

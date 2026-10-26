@@ -50,6 +50,22 @@
   @keyframes bbIdle { 0%,100% { transform:translateY(0) scale(1,1); } 50% { transform:translateY(-4%) scale(.98,1.02); } }
   @keyframes bbWelcome { 0%,100% { transform:translateY(0) rotate(0); } 30% { transform:translateY(-5%) rotate(-7deg) scale(1.03); } 70% { transform:translateY(-3.5%) rotate(7deg) scale(1.03); } }
   @keyframes bbBlink { 0%,92%,100% { transform:scaleY(1); } 95% { transform:scaleY(.1); } }
+  .guild { position:relative; }
+  .guild-btn { height:40px; padding:0 12px 0 8px; display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:2px; font-weight:600; max-width:280px; transition:border-color .15s; }
+  .guild-btn:hover, .guild-btn[aria-expanded="true"] { border-color:var(--accent-line); }
+  .guild-btn .chev { width:8px; height:8px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg) translate(-2px,-2px); transition:transform .2s var(--ease); margin-left:2px; }
+  .guild-btn[aria-expanded="true"] .chev { transform:rotate(-135deg) translate(-2px,-2px); }
+  .guild-static { cursor:default; }
+  .gname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gicon { width:24px; height:24px; border-radius:999px; background:var(--border); object-fit:cover; display:flex; align-items:center; justify-content:center; font:700 11px var(--mono); flex:none; overflow:hidden; }
+  .gcount { font:700 11px var(--mono); background:var(--accent); color:#fff; padding:2px 6px; border-radius:2px; flex:none; }
+  .menu { position:absolute; top:calc(100% + 6px); left:0; min-width:280px; max-width:92vw; background:var(--raised); border:1px solid var(--border); border-radius:2px; box-shadow:0 12px 32px rgba(0,0,0,.5); padding:6px; z-index:15; animation:rise .18s var(--ease) both; }
+  .menu .eyebrow { padding:8px 10px 6px; }
+  .opt { width:100%; display:flex; align-items:center; gap:10px; padding:10px; background:none; border:0; border-radius:2px; text-align:left; transition:background .12s; }
+  .opt:hover, .opt:focus-visible { background:var(--surface); }
+  .opt[aria-checked="true"] { background:var(--accent-deep); box-shadow:inset 3px 0 0 var(--accent); }
+  .opt .gname { flex:1; font-weight:600; }
+  .opt small { color:var(--muted); font-size:12px; }
   .spacer { flex:1; }
 
   .btn { height:36px; padding:0 16px; background:var(--raised); border:1px solid var(--border); border-radius:2px; font-weight:600; font-size:14px; transition:transform .12s, box-shadow .12s, border-color .15s, background .15s; white-space:nowrap; }
@@ -156,7 +172,7 @@ const STATUS = {
   closed:      { label:"Fermé",    color:"#AEACA8", hint:"Résolus" },
 };
 const TABS = [["", "Tous"], ["open", "Ouverts"], ["in_progress", "En cours"], ["closed", "Fermés"]];
-const state = { me:null, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
+const state = { me:null, guilds:[], guild:null, menu:false, filter:"", query:"", tickets:[], stats:{open:0,in_progress:0,closed:0}, selected:null, detail:null, loading:true, online:true, changed:new Set(), animate:true };
 const app = document.getElementById("app");
 let lastStats = null;
 
@@ -261,9 +277,23 @@ async function renderLogin(error = "") {
 }
 
 /* ---------- Données ---------- */
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+
 async function load() {
   state.me ??= await api("/me").catch((e) => { if (e.message === "auth") throw e; return null; });
-  const data = await api("/tickets");
+  state.guilds = (await api("/guilds")).guilds;
+  if (!state.guilds.some((g) => g.id === state.guild)) {
+    const saved = store.get("guild");
+    state.guild = (state.guilds.find((g) => g.id === saved) ?? state.guilds[0])?.id ?? null;
+  }
+  if (!state.guild) {
+    state.tickets = []; state.stats = { open:0, in_progress:0, closed:0 }; state.detail = null; state.selected = null;
+    return;
+  }
+  const data = await api("/tickets?guild=" + encodeURIComponent(state.guild));
   const prev = new Map(state.tickets.map((t) => [t.id, t.status + t.updatedAt]));
   state.changed = new Set(state.tickets.length ? data.tickets.filter((t) => prev.get(t.id) !== t.status + t.updatedAt).map((t) => t.id) : []);
   state.tickets = data.tickets;
@@ -382,7 +412,7 @@ function renderMain() {
   const typing = document.activeElement?.id === "reply" ? document.activeElement : null;
   const sel = typing?.selectionStart;
   app.replaceChildren(
-    h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), h("div", { class:"spacer" }), live, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
+    h("header.top".split(".")[0], { class:"top" }, bibi("idle", 28), h("b", {}, "Support"), h("span", { class:"eyebrow" }, "Panel admin"), guildPicker(), h("div", { class:"spacer" }), live, state.me ? h("span", { class:"eyebrow", style:"text-transform:none;letter-spacing:0;font-size:13px" }, state.me.name) : null, logout),
     h("main", {},
       h("div", { class:"head" + (state.animate ? " rise" : "") }, h("div", {}, h("div", { class:"eyebrow", style:"color:var(--accent-ink)" }, "Tickets"), h("h1", { class:"display" }, "Tous les tickets")), search),
       h("div", { class:"kpis" }, kpi("open", 1), kpi("in_progress", 2), kpi("closed", 3)),
@@ -390,6 +420,43 @@ function renderMain() {
   if (typing) { const el = document.getElementById("reply"); if (el && !el.disabled) { el.focus(); el.setSelectionRange(sel, sel); } }
   lastStats = { ...state.stats };
   state.animate = false; state.slide = false;
+}
+
+async function switchGuild(id) {
+  state.menu = false;
+  if (id === state.guild) return renderMain();
+  state.guild = id; store.set("guild", id);
+  state.selected = null; state.detail = null; state.filter = ""; state.query = "";
+  state.tickets = []; state.loading = true; state.animate = true;
+  renderMain();
+  try { await load(); } catch (e) { if (e.message !== "auth") toast(e.message); }
+  state.loading = false; state.animate = true;
+  renderMain();
+}
+
+function guildIcon(g) {
+  return g.icon ? h("img", { class:"gicon", src:g.icon, alt:"", referrerpolicy:"no-referrer" })
+                : h("span", { class:"gicon", "aria-hidden":"true" }, [...g.name][0]?.toUpperCase() ?? "?");
+}
+
+function guildPicker() {
+  const cur = state.guilds.find((g) => g.id === state.guild);
+  if (!cur) return h("span", { class:"eyebrow" }, "Aucun serveur");
+  const others = state.guilds.filter((g) => g.id !== cur.id).reduce((n, g) => n + g.stats.open, 0);
+  if (state.guilds.length === 1) {
+    return h("div", { class:"guild" }, h("div", { class:"guild-btn guild-static", title:"Serveur administré" }, guildIcon(cur), h("span", { class:"gname" }, cur.name)));
+  }
+  const btn = h("button", { class:"guild-btn", "aria-haspopup":"listbox", "aria-expanded":String(state.menu), id:"guild-btn",
+    onclick:(e) => { e.stopPropagation(); state.menu = !state.menu; renderMain(); document.getElementById(state.menu ? "guild-first" : "guild-btn")?.focus(); } },
+    guildIcon(cur), h("span", { class:"gname" }, cur.name),
+    others ? h("span", { class:"gcount", title:`${others} ticket(s) ouvert(s) sur les autres serveurs` }, String(others)) : null,
+    h("span", { class:"chev" }));
+  const menu = state.menu ? h("div", { class:"menu", role:"listbox", "aria-label":"Choisir un serveur", onclick:(e) => e.stopPropagation() },
+    h("div", { class:"eyebrow" }, "Serveurs"),
+    state.guilds.map((g, i) => h("button", { class:"opt", role:"option", id: i === 0 ? "guild-first" : null, "aria-checked":String(g.id === state.guild), onclick:() => switchGuild(g.id) },
+      guildIcon(g), h("span", { class:"gname" }, g.name),
+      g.stats.open ? h("span", { class:"gcount" }, String(g.stats.open)) : h("small", {}, "à jour")))) : null;
+  return h("div", { class:"guild" }, btn, menu);
 }
 
 async function select(id) {
@@ -412,7 +479,9 @@ async function refresh(force = false) {
   }
 }
 
+document.addEventListener("click", () => { if (state.menu) { state.menu = false; renderMain(); } });
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.menu) { state.menu = false; renderMain(); document.getElementById("guild-btn")?.focus(); }
   if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? "")) { e.preventDefault(); document.getElementById("q")?.focus(); }
 });
 

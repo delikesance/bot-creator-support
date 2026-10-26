@@ -20,16 +20,17 @@ const lazy: Gateway = {
 const desk = new SupportDesk(tickets, lazy, { maxActivePerUser: 1 });
 
 await startBot(cfg, desk, (client) => (real = new DiscordGateway(client, cfg)));
+// Anciens tickets (avant le multi-serveurs) : rattachés au serveur de test.
+if (cfg.testGuildId) tickets.adoptOrphans(cfg.testGuildId);
 
 let oauth: DiscordOAuth | undefined;
 if (cfg.oauthClientSecret) {
   const adminIds = cfg.adminIds.length ? cfg.adminIds : await fetchApplicationOwners(cfg.token);
-  if (!adminIds.length) throw new Error("OAuth2 actif mais aucun admin : renseigne ADMIN_IDS.");
   oauth = new DiscordOAuth({ clientId: cfg.clientId, clientSecret: cfg.oauthClientSecret, redirectUri: cfg.redirectUri, adminIds });
-  console.log(`Connexion au panel via Discord OAuth2 (admins : ${adminIds.join(", ")})`);
+  console.log(`Connexion au panel via Discord OAuth2 (super-admins : ${adminIds.join(", ") || "aucun"} ; les gérants de serveur accèdent à leur serveur)`);
   console.log(`Redirection à déclarer dans le portail Discord : ${cfg.redirectUri}`);
 }
 
-Bun.serve({ port: cfg.port, fetch: createHandler(desk, cfg, oauth) });
+Bun.serve({ port: cfg.port, fetch: createHandler(desk, cfg, oauth, { list: () => real?.list() ?? [] }) });
 console.log(`Panel admin : http://localhost:${cfg.port}`);
 if (!oauth && cfg.passwordGenerated) console.log(`Mot de passe du panel (généré) : ${cfg.panelPassword}`);

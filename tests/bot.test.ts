@@ -19,7 +19,7 @@ function ix(over: Partial<Ix>): Ix {
     kind: "command",
     id: "",
     userId: "u1",
-    userName: "alice",
+    guildId: "g1", userName: "alice",
     channelId: "chat",
     isStaff: false,
     reply: async (t) => void out.replies.push(t),
@@ -71,14 +71,14 @@ describe("/setup", () => {
 describe("gestion dans le salon ticket", () => {
   let id: number;
   beforeEach(async () => {
-    id = (await desk.open({ userId: "u1", userName: "alice", subject: "a" })).id;
+    id = (await desk.open({ userId: "u1", guildId: "g1", userName: "alice", subject: "a" })).id;
   });
   const inTicket = { channelId: "chanX" };
 
   test("claim réservé au staff", async () => {
     await handleInteraction(desk, ix({ kind: "button", id: "ticket:claim", ...inTicket }));
     expect(desk.tickets.get(id)!.status).toBe("open");
-    await handleInteraction(desk, ix({ kind: "button", id: "ticket:claim", isStaff: true, userId: "a1", userName: "admin", ...inTicket }));
+    await handleInteraction(desk, ix({ kind: "button", id: "ticket:claim", isStaff: true, userId: "a1", guildId: "g1", userName: "admin", ...inTicket }));
     expect(desk.tickets.get(id)!.status).toBe("in_progress");
   });
   test("le propriétaire peut fermer son ticket", async () => {

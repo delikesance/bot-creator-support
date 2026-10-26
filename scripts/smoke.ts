@@ -14,7 +14,7 @@ await client.login(cfg.token);
 await new Promise((r) => client.once("clientReady", r));
 
 const desk = new SupportDesk(new TicketService(openDb(":memory:")), new DiscordGateway(client, cfg));
-const handle = createHandler(desk, cfg);
+const handle = createHandler(desk, cfg, undefined, { list: () => [{ id: cfg.testGuildId!, name: "test", icon: null }] });
 
 const login = await handle(
   new Request("http://x/api/login", { method: "POST", body: JSON.stringify({ password: cfg.panelPassword }) }),
@@ -28,7 +28,7 @@ const call = async (path: string, body?: unknown) => {
 };
 const step = (s: string) => console.log("✔", s);
 
-const t = await desk.open({ userId: client.user!.id, userName: "smoke-test", subject: "Test de bout en bout" });
+const t = await desk.open({ guildId: cfg.testGuildId!, userId: client.user!.id, userName: "smoke-test", subject: "Test de bout en bout" });
 step(`ticket #${t.id} créé, salon ${t.channelId}`);
 await call(`/tickets/${t.id}/claim`);
 step("pris en charge (in_progress)");
