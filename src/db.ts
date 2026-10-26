@@ -80,6 +80,11 @@ export function openDb(path: string): Database {
     detail TEXT NOT NULL DEFAULT ''
   )`);
   db.run("CREATE INDEX IF NOT EXISTS idx_audit_ticket ON audit(ticket_id)");
+  // Réglages par serveur (aujourd'hui : catégorie où /setup range les salons de ticket).
+  db.run(`CREATE TABLE IF NOT EXISTS guild_settings (
+    guild_id TEXT PRIMARY KEY,
+    category_id TEXT
+  )`);
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_guild ON tickets(guild_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)");
   db.run("CREATE INDEX IF NOT EXISTS idx_messages_ticket ON messages(ticket_id)");

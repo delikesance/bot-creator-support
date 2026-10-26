@@ -17,10 +17,13 @@ export interface Ix {
   description?: string;
   /** Locale Discord de l'utilisateur (`interaction.locale`). */
   locale?: string;
+  /** Catégorie choisie dans l'option de /setup. */
+  category?: { id: string; name: string };
   /** Réponse visible uniquement par l'auteur. */
   reply(text: string): Promise<void>;
   showSubjectModal(): Promise<void>;
-  postPanel(): Promise<void>;
+  /** Poste le panneau public, puis répond `confirmation` (éphémère) à l'admin. */
+  postPanel(confirmation: string): Promise<void>;
 }
 
 export async function handleInteraction(desk: SupportDesk, ix: Ix): Promise<void> {
@@ -48,7 +51,10 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
 
   if (kind === "command" && id === "setup") {
     if (!ix.isStaff) return ix.reply(p.noPerm);
-    return ix.postPanel();
+    // Sans l'option, la catégorie déjà réglée pour ce serveur est conservée.
+    if (ix.category) desk.tickets.setCategory(ix.guildId, ix.category.id, ix.userName);
+    const where = ix.category ? ` ${p.categorySet.replace("{name}", ix.category.name)}` : "";
+    return ix.postPanel(p.panelPosted + where);
   }
 
   // Note de 1 à 5 donnée au bouton posté à la fermeture : « rate:<ticket>:<n> ». Le desk vérifie l'auteur et l'état.
