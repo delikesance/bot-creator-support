@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { dirname, join } from "node:path";
 
 export interface Config {
   token: string;
@@ -11,6 +12,8 @@ export interface Config {
   production: boolean;
   port: number;
   dbPath: string;
+  /** Dossier des pièces jointes (par défaut à côté de la base). */
+  attachmentsDir: string;
   panelPassword: string;
   passwordGenerated: boolean;
   sessionSecret: string;
@@ -35,7 +38,8 @@ export function loadConfig(env: Env): Config {
   const clientId =
     env.DISCORD_CLIENT_ID?.trim() || Buffer.from(token.split(".")[0]!, "base64").toString("utf8");
 
-  const passwordGenerated = !env.PANEL_PASSWORD;
+  const dbPath = env.DB_PATH || "data/tickets.db";
+  const passwordGenerated =!env.PANEL_PASSWORD;
   return {
     token,
     clientId,
@@ -45,7 +49,8 @@ export function loadConfig(env: Env): Config {
     categoryId: env.TICKET_CATEGORY_ID?.trim() || null,
     production,
     port: Number(env.PORT) || 3000,
-    dbPath: env.DB_PATH || "data/tickets.db",
+    dbPath,
+    attachmentsDir: env.ATTACHMENTS_DIR?.trim() || join(dirname(dbPath), "attachments"),
     panelPassword: env.PANEL_PASSWORD || randomBytes(9).toString("base64url"),
     passwordGenerated,
     sessionSecret: env.SESSION_SECRET || randomBytes(32).toString("hex"),
