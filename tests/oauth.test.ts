@@ -6,16 +6,17 @@ import { createHandler } from "../src/web";
 import { DiscordOAuth, type OAuthProvider } from "../src/oauth";
 
 const sent: string[] = [];
+const sentOpts: unknown[] = [];
 const gw: Gateway = {
   createTicketChannel: async () => "chan1",
-  send: async (_c, t) => void sent.push(t),
+  send: async (_c, t, o) => void (sent.push(t), sentOpts.push(o)),
   setUserLocked: async () => {},
   deleteChannel: async () => {},
 };
 const cfg = { panelPassword: "pw", sessionSecret: "s".repeat(32) };
 
-const users: Record<string, { id: string; username: string; guilds: { id: string; permissions: string }[] }> = {
-  good: { id: "100", username: "Angelo", guilds: [] },
+const users: Record<string, { id: string; username: string; avatarUrl?: string; guilds: { id: string; permissions: string }[] }> = {
+  good: { id: "100", username: "Angelo", avatarUrl: "https://cdn.test/angelo.png", guilds: [] },
   bad: { id: "999", username: "intrus", guilds: [] },
 };
 const provider: OAuthProvider = {
@@ -31,6 +32,7 @@ let handle: (r: Request) => Promise<Response>;
 let desk: SupportDesk;
 beforeEach(() => {
   sent.length = 0;
+  sentOpts.length = 0;
   desk = new SupportDesk(new TicketService(openDb(":memory:")), gw);
   handle = createHandler(desk, cfg, provider, { list: () => [{ id: "g1", name: "Test", icon: null }] });
 });
@@ -127,6 +129,15 @@ describe("avec OAuth actif", () => {
     expect(desk.tickets.messages(t.id).at(-1)).toMatchObject({ authorName: "Angelo", source: "panel" });
   });
 
+  test("la réponse est postée sous le pseudo et l'avatar Discord de l'admin", async () => {
+    const c = await session();
+    const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
+    await handle(new Request(`http://x/api/tickets/${t.id}/reply`, { method: "POST", headers: { cookie: c }, body: JSON.stringify({ content: "Salut" }) }));
+    expect(sentOpts.at(-1)).toEqual({ as: { name: "Angelo", avatarUrl: "https://cdn.test/angelo.png" } });
+    const me = await (await handle(new Request("http://x/api/me", { headers: { cookie: c } }))).json();
+    expect(me.avatarUrl).toBe("https://cdn.test/angelo.png");
+  });
+
   test("la prise en charge est attribuée à l'admin", async () => {
     const c = await session();
     const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
@@ -175,13 +186,29 @@ describe("DiscordOAuth (client HTTP)", () => {
           : Response.json({ id: "100", username: "Angelo", global_name: "Angelo C" });
     }) as unknown as typeof fetch;
     const user = await make(fake).exchange("thecode");
-    expect(user).toEqual({ id: "100", username: "Angelo C", guilds: [{ id: "g1", permissions: "32" }] });
+    expect(user).toEqual({
+      id: "100",
+      username: "Angelo C",
+      avatarUrl: `https://cdn.discordapp.com/embed/avatars/${(100n >> 22n) % 6n}.png`,
+      guilds: [{ id: "g1", permissions: "32" }],
+    });
     const body = String(calls[0]!.init!.body);
     expect(body).toContain("code=thecode");
     expect(body).toContain("grant_type=authorization_code");
     expect(calls[1]!.url).toContain("/users/@me");
     expect(calls[2]!.url).toContain("/users/@me/guilds");
     expect((calls[1]!.init!.headers as Record<string, string>).authorization).toBe("Bearer tok");
+  });
+
+  test("avatar personnalisé : URL du CDN Discord", async () => {
+    const fake = (async (url: string) =>
+      url.endsWith("/oauth2/token")
+        ? Response.json({ access_token: "tok" })
+        : url.includes("/guilds")
+          ? Response.json([])
+          : Response.json({ id: "100", username: "Angelo", avatar: "abc123" })) as unknown as typeof fetch;
+    const user = await make(fake).exchange("c");
+    expect(user.avatarUrl).toBe("https://cdn.discordapp.com/avatars/100/abc123.png?size=128");
   });
 
   test("erreur Discord : exception", async () => {

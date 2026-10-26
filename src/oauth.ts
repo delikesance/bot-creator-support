@@ -7,6 +7,8 @@ export interface OAuthGuild {
 export interface OAuthUser {
   id: string;
   username: string;
+  /** Photo de profil Discord (ou avatar par défaut). */
+  avatarUrl?: string;
   guilds: OAuthGuild[];
 }
 
@@ -64,7 +66,7 @@ export class DiscordOAuth implements OAuthProvider {
 
     const userRes = await this.http(`${API}/users/@me`, { headers: { authorization: `Bearer ${access_token}` } });
     if (!userRes.ok) throw new Error(`Lecture du profil impossible (${userRes.status})`);
-    const u = (await userRes.json()) as { id: string; username: string; global_name?: string | null };
+    const u = (await userRes.json()) as { id: string; username: string; global_name?: string | null; avatar?: string | null };
 
     const guildsRes = await this.http(`${API}/users/@me/guilds`, { headers: { authorization: `Bearer ${access_token}` } });
     if (!guildsRes.ok) throw new Error(`Lecture des serveurs impossible (${guildsRes.status})`);
@@ -72,7 +74,10 @@ export class DiscordOAuth implements OAuthProvider {
       id: g.id,
       permissions: String(g.permissions),
     }));
-    return { id: u.id, username: u.global_name || u.username, guilds };
+    const avatarUrl = u.avatar
+      ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128`
+      : `https://cdn.discordapp.com/embed/avatars/${(BigInt(u.id) >> 22n) % 6n}.png`;
+    return { id: u.id, username: u.global_name || u.username, avatarUrl, guilds };
   }
 
   /** Super-admin : accède à tous les serveurs où le bot est présent. */

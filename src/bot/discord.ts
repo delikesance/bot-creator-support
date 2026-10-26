@@ -13,6 +13,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type Guild,
+  type Webhook,
   type Interaction,
   type TextChannel,
 } from "discord.js";
@@ -49,6 +50,18 @@ export class DiscordGateway implements Gateway {
     return this.client.guilds.cache.map((g) => ({ id: g.id, name: g.name, icon: g.iconURL({ size: 64 }) }));
   }
 
+  private hooks = new Map<string, Webhook>();
+
+  /** Webhook du salon (créé au besoin) : permet de poster sous le pseudo et l'avatar d'un admin. */
+  private async webhook(ch: TextChannel): Promise<Webhook> {
+    const cached = this.hooks.get(ch.id);
+    if (cached) return cached;
+    const mine = (await ch.fetchWebhooks()).find((w) => w.owner?.id === this.client.user!.id);
+    const hook = mine ?? (await ch.createWebhook({ name: "Support" }));
+    this.hooks.set(ch.id, hook);
+    return hook;
+  }
+
   private async channel(id: string): Promise<TextChannel> {
     const c = await this.client.channels.fetch(id);
     if (!c || c.type !== ChannelType.GuildText) throw new Error(`Salon ${id} introuvable.`);
@@ -65,7 +78,7 @@ export class DiscordGateway implements Gateway {
     const overwrites = [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: o.userId, allow },
-      { id: this.client.user!.id, allow: [...allow, PermissionFlagsBits.ManageChannels] },
+      { id: this.client.user!.id, allow: [...allow, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageWebhooks] },
     ];
     if (this.cfg.supportRoleId) overwrites.push({ id: this.cfg.supportRoleId, allow });
     const slug =
@@ -79,8 +92,28 @@ export class DiscordGateway implements Gateway {
     return ch.id;
   }
 
-  async send(channelId: string, text: string, opts?: { controls?: "active" | "closed" }): Promise<void> {
+  async send(
+    channelId: string,
+    text: string,
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string } },
+  ): Promise<void> {
     const ch = await this.channel(channelId);
+    if (opts?.as) {
+      try {
+        const hook = await this.webhook(ch);
+        await hook.send({
+          content: text,
+          username: opts.as.name.slice(0, 80),
+          avatarURL: opts.as.avatarUrl,
+          allowedMentions: { parse: [] },
+        });
+        return;
+      } catch (e) {
+        // Permission « Gérer les webhooks » absente, etc. : on retombe sur le bot plutôt que de perdre le message.
+        this.hooks.delete(ch.id);
+        console.warn(`Webhook indisponible dans ${channelId}, envoi en tant que bot :`, (e as Error).message);
+      }
+    }
     const components =
       opts?.controls === "active" ? [activeRow()] : opts?.controls === "closed" ? [closedRow()] : [];
     await ch.send({
