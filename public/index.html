@@ -139,6 +139,18 @@
   .att:first-child { margin-top:0; }
   .att img { display:block; max-width:min(100%, 420px); max-height:320px; border:1px solid var(--border); border-radius:2px; background:var(--bg); object-fit:contain; transition:border-color .15s; }
   .att:hover img { border-color:var(--accent-line); }
+  .att { cursor:zoom-in; }
+  .lb { position:fixed; inset:0; z-index:60; background:rgba(8,8,9,.95); display:flex; align-items:center; justify-content:center; padding:72px 16px 24px; animation:lbfade .18s ease both; }
+  .lb-bar { position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:10px; padding:14px 20px; }
+  .lb-bar .btn { display:inline-flex; align-items:center; color:var(--text, #fff); text-decoration:none; background:var(--raised); }
+  .lb-count { font:500 12px var(--mono); letter-spacing:.08em; color:var(--muted); }
+  .lb-img { max-width:min(96vw,1400px); max-height:100%; object-fit:contain; border:1px solid var(--border); background:var(--bg); cursor:default; }
+  .lb-img.in { animation:lbzoom .22s var(--ease) both; }
+  .lb-nav { position:absolute; top:50%; transform:translateY(-50%); width:48px; height:64px; font-size:32px; line-height:1; background:var(--surface); color:var(--text, #fff); border:1px solid var(--border); border-radius:2px; transition:border-color .15s; }
+  .lb-nav:hover, .lb-nav:focus-visible { border-color:var(--accent-line); }
+  .lb-nav.prev { left:16px; } .lb-nav.next { right:16px; }
+  @keyframes lbfade { from { opacity:0; } to { opacity:1; } }
+  @keyframes lbzoom { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:none; } }
   .att.broken { font-size:13px; color:var(--muted); }
   .msg.panel { align-self:flex-end; } .msg.panel .who { text-align:right; }
   .msg.panel .body { background:var(--accent-deep); border-color:var(--accent-line); box-shadow:3px 3px 0 var(--accent); }
@@ -318,6 +330,43 @@ function isImage(url) {
   try { const u = new URL(url); return IMG_EXT.test(u.pathname) || (u.hostname === "media.discordapp.net" && u.pathname.startsWith("/attachments/")); }
   catch { return false; }
 }
+/* Visionneuse : posée sur <body>, donc intacte quand le panel se redessine en direct. */
+let lb = null;
+function openLightbox(url) {
+  closeLightbox(true);
+  const urls = [...document.querySelectorAll(".msgs .att[href]")].map((a) => a.href);
+  if (!urls.includes(url)) urls.push(url);
+  let i = urls.indexOf(url);
+  const opener = document.activeElement;
+  const img = h("img", { class:"lb-img", alt:"Image jointe" });
+  const count = h("span", { class:"lb-count" });
+  const orig = h("a", { class:"btn ghost", target:"_blank", rel:"noopener noreferrer" }, "Ouvrir l'original");
+  const prev = h("button", { class:"lb-nav prev", "aria-label":"Image précédente", onclick:(e) => { e.stopPropagation(); go(-1); } }, "‹");
+  const next = h("button", { class:"lb-nav next", "aria-label":"Image suivante", onclick:(e) => { e.stopPropagation(); go(1); } }, "›");
+  const close = h("button", { class:"btn ghost", "aria-label":"Fermer", onclick:(e) => { e.stopPropagation(); closeLightbox(); } }, "Fermer");
+  const el = h("div", { class:"lb", role:"dialog", "aria-modal":"true", "aria-label":"Image en grand", onclick:() => closeLightbox() },
+    h("div", { class:"lb-bar", onclick:(e) => e.stopPropagation() }, count, h("div", { class:"spacer" }), orig, close),
+    urls.length > 1 ? [prev, next] : null,
+    img);
+  img.addEventListener("click", (e) => e.stopPropagation());
+  function show() {
+    img.classList.remove("in"); void img.offsetWidth; img.classList.add("in");
+    img.src = urls[i]; orig.href = urls[i];
+    count.textContent = urls.length > 1 ? `${i + 1} / ${urls.length}` : "";
+  }
+  function go(d) { i = (i + d + urls.length) % urls.length; show(); }
+  lb = { el, opener, go, many: urls.length > 1 };
+  document.body.append(el);
+  document.body.style.overflow = "hidden";
+  show(); close.focus();
+}
+function closeLightbox(silent = false) {
+  if (!lb) return;
+  lb.el.remove(); document.body.style.overflow = "";
+  if (!silent && lb.opener?.isConnected) lb.opener.focus();
+  lb = null;
+}
+
 function renderText(text) {
   const out = []; const imgs = [];
   let last = 0;
@@ -328,6 +377,11 @@ function renderText(text) {
     if (isImage(url)) {
       const img = h("img", { src:url, alt:"Image jointe", loading:"lazy", referrerpolicy:"no-referrer" });
       const a = h("a", { class:"att", href:url, target:"_blank", rel:"noopener noreferrer", title:"Ouvrir l'image" }, img);
+      // Clic simple : visionneuse du panel. Ctrl/Cmd/clic milieu gardent l'ouverture dans un onglet.
+      a.addEventListener("click", (e) => {
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        e.preventDefault(); openLightbox(url);
+      });
       img.addEventListener("error", () => { a.classList.add("broken"); a.replaceChildren(document.createTextNode("Image indisponible (lien expiré) : " + url)); });
       imgs.push(a);
     } else {
@@ -543,6 +597,13 @@ function connectEvents() {
 
 document.addEventListener("click", () => { if (state.menu) { state.menu = false; renderMain(); } });
 document.addEventListener("keydown", (e) => {
+  if (lb) {
+    if (e.key === "Escape") closeLightbox();
+    else if (lb.many && e.key === "ArrowRight") lb.go(1);
+    else if (lb.many && e.key === "ArrowLeft") lb.go(-1);
+    else if (e.key === "Tab") { e.preventDefault(); lb.el.querySelector("button")?.focus(); }
+    return;
+  }
   if (e.key === "Escape" && state.menu) { state.menu = false; renderMain(); document.getElementById("guild-btn")?.focus(); }
   if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? "")) { e.preventDefault(); document.getElementById("q")?.focus(); }
 });
