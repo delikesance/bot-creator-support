@@ -48,10 +48,10 @@ describe("validation", () => {
     expect(e.message).toContain("virus.exe");
   });
   test("extension qui ment : un exécutable renommé en png est refusé", () => {
-    expect(() => validateFile({ name: "a.png", data: bytes("MZ\x90\x00") })).toThrow(/contenu/);
+    expect(() => validateFile({ name: "a.png", data: bytes("MZ\x90\x00") })).toThrow(/content/);
   });
   test("fichier vide refusé", () => {
-    expect(() => validateFile({ name: "a.txt", data: new Uint8Array() })).toThrow(/vide/);
+    expect(() => validateFile({ name: "a.txt", data: new Uint8Array() })).toThrow(/empty/);
   });
   test("plus de 25 Mo : 413 avec le nom", () => {
     const e = failure(() => validateFile({ name: "gros.zip", data: new Uint8Array(25 * 1024 * 1024 + 1) }));

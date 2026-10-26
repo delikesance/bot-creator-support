@@ -134,7 +134,7 @@ describe("messages", () => {
   test("réponse sur ticket fermé refusée", async () => {
     const t = await desk.open({ ...user, subject: "a" });
     await desk.close(t.id, "admin");
-    await expect(desk.reply(t.id, "hello", "Support")).rejects.toThrow(/fermé/);
+    await expect(desk.reply(t.id, "hello", "Support")).rejects.toThrow(/closed/);
   });
 
   test("échec d'envoi Discord : message non historisé", async () => {

@@ -27,12 +27,12 @@ type Env = Record<string, string | undefined>;
 
 export function loadConfig(env: Env): Config {
   const token = env.DISCORD_TOKEN?.trim();
-  if (!token) throw new Error("DISCORD_TOKEN est requis");
+  if (!token) throw new Error("DISCORD_TOKEN is required");
 
   const production = env.NODE_ENV === "production";
   const testGuildId = env.TEST_GUILD_ID?.trim() || null;
   if (!production && !testGuildId) {
-    throw new Error("TEST_GUILD_ID est requis hors production (les commandes y sont enregistrées)");
+    throw new Error("TEST_GUILD_ID is required outside production (commands are registered there)");
   }
 
   const clientId =

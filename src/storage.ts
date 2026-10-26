@@ -89,23 +89,23 @@ export interface ValidFile {
 export function validateFile(f: { name: string; data: Uint8Array }): ValidFile {
   const name = sanitizeName(f.name);
   if (f.data.byteLength > MAX_FILE_BYTES) {
-    throw new AttachmentError(`« ${name} » dépasse 25 Mo.`, 413);
+    throw new AttachmentError(`"${name}" is over 25 MB.`, 413);
   }
   const ext = extensionOf(name);
   const type = TYPES[ext];
-  if (!type) throw new AttachmentError(`« ${name} » : type de fichier non autorisé.`, 400);
-  if (f.data.byteLength === 0) throw new AttachmentError(`« ${name} » est vide.`, 400);
+  if (!type) throw new AttachmentError(`"${name}": file type not allowed.`, 400);
+  if (f.data.byteLength === 0) throw new AttachmentError(`"${name}" is empty.`, 400);
   if (!matchesSignature(ext, f.data)) {
-    throw new AttachmentError(`« ${name} » : le contenu ne correspond pas à son extension.`, 400);
+    throw new AttachmentError(`"${name}": content does not match its extension.`, 400);
   }
   return { name, ext, mime: type.mime, kind: type.kind, size: f.data.byteLength };
 }
 
 /** Valide un lot (nombre, taille cumulée, chaque fichier). */
 export function validateBatch(files: { name: string; data: Uint8Array }[]): ValidFile[] {
-  if (files.length > MAX_FILES) throw new AttachmentError(`Trop de fichiers (maximum ${MAX_FILES}).`, 413);
+  if (files.length > MAX_FILES) throw new AttachmentError(`Too many files (maximum ${MAX_FILES}).`, 413);
   const total = files.reduce((n, f) => n + f.data.byteLength, 0);
-  if (total > MAX_REQUEST_BYTES) throw new AttachmentError("Les fichiers dépassent 40 Mo au total.", 413);
+  if (total > MAX_REQUEST_BYTES) throw new AttachmentError("Files exceed 40 MB in total.", 413);
   return files.map(validateFile);
 }
 
@@ -113,7 +113,7 @@ const STORED = /^[a-f0-9]{32}\.[a-z0-9]{2,4}$/;
 
 /** Écrit le fichier sous un nom aléatoire (jamais dérivé de l'entrée, sauf l'extension de la liste blanche). */
 export async function storeFile(dir: string, data: Uint8Array, ext: string): Promise<string> {
-  if (!TYPES[ext]) throw new Error(`Extension non autorisée : ${ext}`);
+  if (!TYPES[ext]) throw new Error(`Extension not allowed: ${ext}`);
   await mkdir(dir, { recursive: true });
   const file = `${randomBytes(16).toString("hex")}.${ext}`;
   await Bun.write(join(dir, file), data);

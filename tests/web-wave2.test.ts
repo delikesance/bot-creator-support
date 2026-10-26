@@ -51,9 +51,9 @@ describe("note", () => {
     expect(((await r.json()) as { message: { internal: boolean } }).message.internal).toBe(true);
     expect(sent.length).toBe(before);
   });
-  test("note vide : 409 comme une réponse vide", async () => {
+  test("note vide : 400", async () => {
     const t = await open();
-    expect((await post(`/api/tickets/${t.id}/note`, { content: " " })).status).toBe(409);
+    expect((await post(`/api/tickets/${t.id}/note`, { content: " " })).status).toBe(400);
   });
 });
 
@@ -87,7 +87,7 @@ describe("attribution, priorité, étiquettes", () => {
     const r = await post(`/api/tickets/${t.id}/tags`, { tags: ["Bug", "ui"] });
     expect(((await r.json()) as { ticket: { tags: string[] } }).ticket.tags).toEqual(["bug", "ui"]);
     expect((await post(`/api/tickets/${t.id}/tags`, { tags: "bug" })).status).toBe(400);
-    expect((await post(`/api/tickets/${t.id}/tags`, { tags: ["pas valide!"] })).status).toBe(409);
+    expect((await post(`/api/tickets/${t.id}/tags`, { tags: ["pas valide!"] })).status).toBe(400);
   });
   test("ticket d'un autre serveur : 404 sur chaque action", async () => {
     const t = await open();
@@ -161,8 +161,8 @@ describe("réponses enregistrées", () => {
     const del = await call(`/api/replies/${list.replies[0]!.id}`, { method: "DELETE" });
     expect(((await del.json()) as { replies: unknown[] }).replies).toEqual([]);
   });
-  test("nom invalide : 409 ; champs manquants : 400 ; serveur interdit : 403", async () => {
-    expect((await post("/api/replies", { guild: "g1", name: "Pas Valide", text: "x" })).status).toBe(409);
+  test("nom invalide : 400 ; champs manquants : 400 ; serveur interdit : 403", async () => {
+    expect((await post("/api/replies", { guild: "g1", name: "Pas Valide", text: "x" })).status).toBe(400);
     expect((await post("/api/replies", { guild: "g1", name: "ok" })).status).toBe(400);
     expect((await post("/api/replies", { guild: "g2", name: "ok", text: "x" })).status).toBe(403);
     expect((await call("/api/replies?guild=g2")).status).toBe(403);

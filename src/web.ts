@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join, resolve, sep } from "node:path";
-import type { SupportDesk } from "./desk";
+import { GatewayError, type SupportDesk } from "./desk";
 import type { OAuthProvider } from "./oauth";
 import { TicketError, type Awaiting, type CloseReason, type Priority, type Status } from "./tickets";
 import { AttachmentError, MAX_REQUEST_BYTES, openStored } from "./storage";
@@ -11,6 +11,8 @@ const AWAITING: Awaiting[] = ["support", "customer"];
 const PRIORITIES: Priority[] = ["low", "normal", "high", "urgent"];
 const CLOSE_REASONS: CloseReason[] = ["resolved", "no_reply", "duplicate", "other"];
 const MAX_QUERY = 200;
+/** Statut HTTP selon le code de l'erreur métier. */
+const TICKET_STATUS = { not_found: 404, closed: 409, not_closed: 409, conflict: 409, invalid: 400, quota: 429 } as const;
 const MAX_NAME = 80;
 const SESSION_TTL_MS = 12 * 3600_000;
 const STATE_TTL_S = 600;
@@ -72,7 +74,7 @@ const page = (title: string, text: string, status: number) =>
     `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
       `<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B0B0C;color:#F4F2EE;font:16px system-ui,sans-serif">` +
       `<div style="max-width:380px;padding:24px;text-align:center"><h1 style="font-size:22px">${title}</h1><p style="color:#C9C7C2">${text}</p>` +
-      `<a href="/" style="color:#A78BFA">Retour au panel</a></div>`,
+      `<a href="/" style="color:#A78BFA">Back to the panel</a></div>`,
     { status, headers: { "content-type": "text/html; charset=utf-8" } },
   );
 
@@ -144,25 +146,25 @@ export function createHandler(
         return r;
       };
       if (!state || !sig || !safeEqual(sig, sign(state)) || url.searchParams.get("state") !== state) {
-        return fail("Connexion invalide", "La session de connexion a expiré ou est invalide. Réessaie.");
+        return fail("Invalid sign-in", "The sign-in session has expired or is invalid. Try again.");
       }
       const code = url.searchParams.get("code");
-      if (url.searchParams.get("error") || !code) return fail("Connexion annulée", "Discord n'a pas autorisé la connexion.");
+      if (url.searchParams.get("error") || !code) return fail("Sign-in cancelled", "Discord did not authorize the sign-in.");
 
       let user;
       try {
         user = await oauth.exchange(code);
       } catch (e) {
         console.error("OAuth:", e);
-        return fail("Connexion impossible", "Discord a refusé la connexion. Réessaie.");
+        return fail("Sign-in failed", "Discord refused the sign-in. Try again.");
       }
       const all = oauth.isAdmin(user.id);
       const guilds = user.guilds.filter((g) => canManage(g.permissions)).map((g) => g.id);
       const hasAccess = all || directory.list().some((g) => guilds.includes(g.id));
       if (!hasAccess) {
         return fail(
-          "Accès refusé",
-          "Tu dois avoir la permission « Gérer le serveur » sur un serveur où le bot est présent.",
+          "Access denied",
+          "You need the “Manage Server” permission on a server where the bot is present.",
           403,
         );
       }
@@ -213,10 +215,10 @@ export function createHandler(
     }
     // Marge pour les en-têtes multipart au-delà des 40 Mo de fichiers.
     if (Number(req.headers.get("content-length") ?? 0) > MAX_REQUEST_BYTES + 1024 * 1024) {
-      throw new AttachmentError("Les fichiers dépassent 40 Mo au total.", 413);
+      throw new AttachmentError("Files exceed 40 MB in total.", 413);
     }
     const form = await req.formData().catch(() => null);
-    if (!form) throw new AttachmentError("Formulaire illisible.", 400);
+    if (!form) throw new AttachmentError("Unreadable form.", 400);
     const files: { name: string; data: Uint8Array }[] = [];
     for (const f of form.getAll("files")) {
       if (typeof f === "string") continue;
@@ -239,11 +241,11 @@ export function createHandler(
 
     if (path === "/api/login" && req.method === "POST") {
       if (oauth) return json({ error: "Not found" }, 404);
-      if (throttled()) return json({ error: "Trop de tentatives, réessaie dans une minute." }, 429);
+      if (throttled()) return json({ error: "Too many attempts, try again in a minute." }, 429);
       const body = (await req.json().catch(() => ({}))) as { password?: string };
       if (typeof body.password !== "string" || !safeEqual(body.password, cfg.panelPassword)) {
         failures.push(Date.now());
-        return json({ error: "Mot de passe incorrect." }, 401);
+        return json({ error: "Wrong password." }, 401);
       }
       return json({ ok: true }, 200, {
         "set-cookie": cookie("session", makeToken({ id: "panel", name: "Support", all: true, guilds: [] }), SESSION_TTL_MS / 1000),
@@ -252,7 +254,7 @@ export function createHandler(
 
     if (!path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     const session = readSession(req);
-    if (!session) return json({ error: "Non authentifié." }, 401);
+    if (!session) return json({ error: "Not authenticated." }, 401);
 
     if (path === "/api/logout" && req.method === "POST") {
       return json({ ok: true }, 200, { "set-cookie": cookie("session", "", 0) });
@@ -273,15 +275,15 @@ export function createHandler(
       let guildId = url.searchParams.get("guild");
       if (!guildId) {
         const all = accessible(session);
-        if (all.length !== 1) return json({ error: "Choisis un serveur (paramètre guild)." }, 400);
+        if (all.length !== 1) return json({ error: "Pick a server (guild parameter)." }, 400);
         guildId = all[0]!.id;
       }
-      return canAccess(guildId) ? guildId : json({ error: "Accès refusé à ce serveur." }, 403);
+      return canAccess(guildId) ? guildId : json({ error: "Access to this server is denied." }, 403);
     };
 
     if (path === "/api/events" && req.method === "GET") {
       const guildId = url.searchParams.get("guild") ?? "";
-      if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
+      if (!canAccess(guildId)) return json({ error: "Access to this server is denied." }, 403);
       const enc = new TextEncoder();
       let off = () => {};
       let beat: ReturnType<typeof setInterval> | undefined;
@@ -313,18 +315,18 @@ export function createHandler(
     try {
       if (path === "/api/unfurl" && req.method === "GET") {
         const target = url.searchParams.get("url") ?? "";
-        if (!target || target.length > 2048) return json({ error: "Lien invalide." }, 400);
+        if (!target || target.length > 2048) return json({ error: "Invalid link." }, 400);
         const preview = await unfurl(target);
-        return preview ? json(preview, 200, { "cache-control": "private, max-age=600" }) : json({ error: "Aperçu indisponible." }, 404);
+        return preview ? json(preview, 200, { "cache-control": "private, max-age=600" }) : json({ error: "Preview unavailable." }, 404);
       }
 
       const att = /^\/api\/attachments\/(\d+)$/.exec(path);
       if (att && req.method === "GET") {
         const a = desk.tickets.attachment(Number(att[1]));
         // Pièce d'un serveur non autorisé : indiscernable d'une pièce inexistante.
-        if (!a || !canAccess(a.guildId) || !desk.attachmentsDir) return json({ error: "Pièce jointe introuvable." }, 404);
+        if (!a || !canAccess(a.guildId) || !desk.attachmentsDir) return json({ error: "Attachment not found." }, 404);
         const file = openStored(desk.attachmentsDir, a.file);
-        if (!file || !(await file.exists())) return json({ error: "Pièce jointe introuvable." }, 404);
+        if (!file || !(await file.exists())) return json({ error: "Attachment not found." }, 404);
         const ascii = a.name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
         return new Response(file, {
           headers: {
@@ -340,13 +342,13 @@ export function createHandler(
       if (path === "/api/tickets" && req.method === "GET") {
         const param = (k: string) => url.searchParams.get(k)?.trim() || undefined;
         const status = param("status");
-        if (status && !STATUSES.includes(status as Status)) return json({ error: "Statut invalide." }, 400);
+        if (status && !STATUSES.includes(status as Status)) return json({ error: "Invalid status." }, 400);
         const awaiting = param("awaiting");
-        if (awaiting && !AWAITING.includes(awaiting as Awaiting)) return json({ error: "Attente invalide." }, 400);
+        if (awaiting && !AWAITING.includes(awaiting as Awaiting)) return json({ error: "Invalid awaiting value." }, 400);
         const priority = param("priority");
-        if (priority && !PRIORITIES.includes(priority as Priority)) return json({ error: "Priorité invalide." }, 400);
+        if (priority && !PRIORITIES.includes(priority as Priority)) return json({ error: "Invalid priority." }, 400);
         const q = param("q");
-        if (q && q.length > MAX_QUERY) return json({ error: "Recherche trop longue." }, 400);
+        if (q && q.length > MAX_QUERY) return json({ error: "Search is too long." }, 400);
         const guildId = pickGuild();
         if (guildId instanceof Response) return guildId;
         return json({
@@ -371,14 +373,14 @@ export function createHandler(
         const guildId = pickGuild();
         if (guildId instanceof Response) return guildId;
         const days = Number(url.searchParams.get("days") ?? 7);
-        if (!Number.isInteger(days) || days < 1 || days > 90) return json({ error: "days doit être un entier de 1 à 90." }, 400);
+        if (!Number.isInteger(days) || days < 1 || days > 90) return json({ error: "days must be an integer from 1 to 90." }, 400);
         return json(desk.tickets.metrics(guildId, days));
       }
 
       if (path === "/api/audit" && req.method === "GET") {
         const id = Number(url.searchParams.get("ticket"));
         const t = Number.isInteger(id) ? desk.tickets.get(id) : null;
-        if (!t || !canAccess(t.guildId)) return json({ error: "Ticket introuvable." }, 404);
+        if (!t || !canAccess(t.guildId)) return json({ error: "Ticket not found." }, 404);
         return json({ entries: desk.tickets.audit(id) });
       }
 
@@ -390,8 +392,8 @@ export function createHandler(
       if (path === "/api/replies" && req.method === "POST") {
         const body = await readJson(req);
         const guildId = typeof body.guild === "string" ? body.guild : "";
-        if (!canAccess(guildId)) return json({ error: "Accès refusé à ce serveur." }, 403);
-        if (typeof body.name !== "string" || typeof body.text !== "string") return json({ error: "name et text sont requis." }, 400);
+        if (!canAccess(guildId)) return json({ error: "Access to this server is denied." }, 403);
+        if (typeof body.name !== "string" || typeof body.text !== "string") return json({ error: "name and text are required." }, 400);
         desk.tickets.saveReply(guildId, body.name.trim(), body.text, session.name);
         return json({ replies: desk.tickets.listReplies(guildId) });
       }
@@ -400,7 +402,7 @@ export function createHandler(
         const id = Number(rep[1]);
         // Le serveur de la réponse se retrouve parmi ceux de la session : une réponse d'un autre serveur est un 404.
         const guild = accessible(session).find((g) => desk.tickets.listReplies(g.id).some((r) => r.id === id));
-        if (!guild) return json({ error: "Réponse introuvable." }, 404);
+        if (!guild) return json({ error: "Saved reply not found." }, 404);
         desk.tickets.deleteReply(id, session.name);
         return json({ replies: desk.tickets.listReplies(guild.id) });
       }
@@ -411,7 +413,7 @@ export function createHandler(
         const action = m[2];
         // Un ticket d'un serveur non autorisé est indiscernable d'un ticket inexistant.
         const owned = desk.tickets.get(id);
-        if (!owned || !canAccess(owned.guildId)) return json({ error: `Ticket #${id} introuvable.` }, 404);
+        if (!owned || !canAccess(owned.guildId)) return json({ error: `Ticket #${id} not found.` }, 404);
         if (!action && req.method === "GET") {
           const ticket = owned;
           return json({ ticket, messages: desk.tickets.messages(id) });
@@ -432,8 +434,8 @@ export function createHandler(
             case "close": {
               // Corps facultatif : les anciens appelants (sans corps) gardent la fermeture simple.
               const b = await readJson(req);
-              if (b.reason !== undefined && !CLOSE_REASONS.includes(b.reason as CloseReason)) return json({ error: "Raison de fermeture invalide." }, 400);
-              if (b.message !== undefined && typeof b.message !== "string") return json({ error: "message doit être du texte." }, 400);
+              if (b.reason !== undefined && !CLOSE_REASONS.includes(b.reason as CloseReason)) return json({ error: "Invalid close reason." }, 400);
+              if (b.message !== undefined && typeof b.message !== "string") return json({ error: "message must be text." }, 400);
               return json({
                 ticket: await desk.close(id, by, {
                   reason: b.reason as CloseReason | undefined,
@@ -454,21 +456,21 @@ export function createHandler(
             }
             case "assign": {
               const b = await readJson(req);
-              if (b.assignee !== null && typeof b.assignee !== "string") return json({ error: "assignee doit être un nom ou null." }, 400);
+              if (b.assignee !== null && typeof b.assignee !== "string") return json({ error: "assignee must be a name or null." }, 400);
               const name = typeof b.assignee === "string" ? b.assignee.trim() || null : null;
-              if (name && name.length > MAX_NAME) return json({ error: "Nom trop long." }, 400);
+              if (name && name.length > MAX_NAME) return json({ error: "Name is too long." }, 400);
               // L'identifiant Discord n'est connu que si l'appelant s'attribue le ticket à lui-même.
               const userId = name !== null && name === session.name && session.id !== "panel" ? session.id : null;
               return json({ ticket: desk.assign(id, name, by, userId) });
             }
             case "priority": {
               const b = await readJson(req);
-              if (!PRIORITIES.includes(b.priority as Priority)) return json({ error: "Priorité invalide." }, 400);
+              if (!PRIORITIES.includes(b.priority as Priority)) return json({ error: "Invalid priority." }, 400);
               return json({ ticket: desk.tickets.setPriority(id, b.priority as Priority, by) });
             }
             case "tags": {
               const b = await readJson(req);
-              if (!Array.isArray(b.tags) || !b.tags.every((t) => typeof t === "string")) return json({ error: "tags doit être une liste de textes." }, 400);
+              if (!Array.isArray(b.tags) || !b.tags.every((t) => typeof t === "string")) return json({ error: "tags must be a list of strings." }, 400);
               return json({ ticket: desk.tickets.setTags(id, b.tags as string[], by) });
             }
             case "reply": {
@@ -481,11 +483,12 @@ export function createHandler(
       }
     } catch (e) {
       if (e instanceof AttachmentError) return json({ error: e.message }, e.status);
+      if (e instanceof GatewayError) return json({ error: e.message }, 502);
       if (e instanceof TicketError) {
-        return json({ error: e.message }, /introuvable/.test(e.message) ? 404 : 409);
+        return json({ error: e.message }, TICKET_STATUS[e.code]);
       }
       console.error(e);
-      return json({ error: "Erreur interne (voir les logs)." }, 500);
+      return json({ error: "Internal error (see the logs)." }, 500);
     }
     return json({ error: "Not found" }, 404);
   };
