@@ -5,6 +5,8 @@ export type Status = "open" | "in_progress" | "closed";
 export type Source = "discord" | "panel" | "system";
 /** À qui est la balle : le support doit répondre, ou on attend le client. */
 export type Awaiting = "support" | "customer";
+export type Priority = "low" | "normal" | "high" | "urgent";
+export type CloseReason = "resolved" | "no_reply" | "duplicate" | "other";
 
 export interface Ticket {
   id: number;
@@ -22,6 +24,36 @@ export interface Ticket {
   createdAt: number;
   updatedAt: number;
   closedAt: number | null;
+  priority: Priority;
+  /** Minuscules, [a-z0-9-], 1 à 24 caractères, 8 au plus. */
+  tags: string[];
+  assigneeId: string | null;
+  closeReason: CloseReason | null;
+  /** Note du client, de 1 à 5. */
+  rating: number | null;
+  /** Premier message public du support. */
+  firstResponseAt: number | null;
+  /** Heure du dernier message client tant que le support doit répondre. */
+  waitingSince: number | null;
+}
+
+export interface Attachment {
+  id: number;
+  messageId: number;
+  name: string;
+  mime: string;
+  size: number;
+  kind: "image" | "file";
+  /** Servie par le desk, jamais l'URL du CDN Discord. */
+  url: string;
+}
+
+/** Pièce jointe à enregistrer ; `file` est le nom du fichier stocké dans ATTACHMENTS_DIR. */
+export interface NewAttachment {
+  name: string;
+  mime: string;
+  size: number;
+  file: string;
 }
 
 export interface TicketMessage {
@@ -32,7 +64,27 @@ export interface TicketMessage {
   content: string;
   source: Source;
   createdAt: number;
+  /** Note interne : réservée au support, jamais envoyée à Discord ni dans la transcription. */
+  internal: boolean;
+  attachments: Attachment[];
 }
+
+const PRIORITIES: readonly Priority[] = ["low", "normal", "high", "urgent"];
+const CLOSE_REASONS: readonly CloseReason[] = ["resolved", "no_reply", "duplicate", "other"];
+const TAG_RE = /^[a-z0-9-]{1,24}$/;
+const MAX_TAGS = 8;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const IMAGE_MIME = /^image\/(png|jpe?g|gif|webp)$/i;
+
+const toAttachment = (r: AttachmentRow): Attachment => ({
+  id: r.id,
+  messageId: r.message_id,
+  name: r.name,
+  mime: r.mime,
+  size: r.size,
+  kind: IMAGE_MIME.test(r.mime) || IMAGE_EXT.test(r.name) ? "image" : "file",
+  url: `/api/attachments/${r.id}`,
+});
 
 export class TicketError extends Error {}
 
@@ -58,7 +110,44 @@ interface Row {
   created_at: number;
   updated_at: number;
   closed_at: number | null;
+  priority: Priority;
+  tags: string;
+  assignee_id: string | null;
+  close_reason: CloseReason | null;
+  rating: number | null;
+  first_response_at: number | null;
+  waiting_since: number | null;
 }
+
+interface MessageRow {
+  id: number;
+  ticket_id: number;
+  author_id: string;
+  author_name: string;
+  content: string;
+  source: Source;
+  internal: number;
+  created_at: number;
+}
+
+interface AttachmentRow {
+  id: number;
+  message_id: number;
+  name: string;
+  mime: string;
+  size: number;
+  file: string;
+  created_at: number;
+}
+
+const parseTags = (s: string): string[] => {
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+};
 
 const toTicket = (r: Row): Ticket => ({
   id: r.id,
@@ -75,6 +164,13 @@ const toTicket = (r: Row): Ticket => ({
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   closedAt: r.closed_at,
+  priority: r.priority,
+  tags: parseTags(r.tags),
+  assigneeId: r.assignee_id,
+  closeReason: r.close_reason,
+  rating: r.rating,
+  firstResponseAt: r.first_response_at,
+  waitingSince: r.waiting_since,
 });
 
 export class TicketService {
@@ -190,64 +286,151 @@ export class TicketService {
   claim(id: number, by: { id: string; name: string }): Ticket {
     const t = this.require(id);
     if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
-    return this.update(id, "in_progress", by.name, null);
+    return this.update(id, "in_progress", by.name, null, by.id);
   }
 
-  close(id: number): Ticket {
+  close(id: number, opts: { reason?: CloseReason } = {}): Ticket {
     const t = this.require(id);
     if (t.status === "closed") throw new TicketError("Ce ticket est déjà fermé.");
-    return this.update(id, "closed", t.assignee, Date.now());
+    if (opts.reason !== undefined && !CLOSE_REASONS.includes(opts.reason)) throw new TicketError("Raison de fermeture invalide.");
+    return this.update(id, "closed", t.assignee, Date.now(), t.assigneeId, opts.reason ?? null);
   }
 
   reopen(id: number): Ticket {
     const t = this.require(id);
     if (t.status !== "closed") throw new TicketError("Ce ticket n'est pas fermé.");
-    return this.update(id, "open", null, null);
+    return this.update(id, "open", null, null, null);
+  }
+
+  setPriority(id: number, priority: Priority): Ticket {
+    this.require(id);
+    if (!PRIORITIES.includes(priority)) throw new TicketError("Priorité invalide.");
+    return this.patch(id, "priority = ?", priority);
+  }
+
+  /** Remplace l'ensemble des étiquettes : minuscules, sans doublon, [a-z0-9-] de 1 à 24 caractères, 8 au plus. */
+  setTags(id: number, tags: string[]): Ticket {
+    this.require(id);
+    const clean = [...new Set(tags.map((t) => t.trim().toLowerCase()))];
+    if (clean.length > MAX_TAGS) throw new TicketError(`Au plus ${MAX_TAGS} étiquettes.`);
+    const bad = clean.find((t) => !TAG_RE.test(t));
+    if (bad !== undefined) throw new TicketError(`Étiquette invalide : « ${bad} ».`);
+    return this.patch(id, "tags = ?", JSON.stringify(clean));
+  }
+
+  /** Attribue le ticket (nom affiché + identifiant s'il est connu) ou le libère avec null ; le statut ne change pas. */
+  assign(id: number, name: string | null, userId: string | null): Ticket {
+    this.require(id);
+    this.db.query("UPDATE tickets SET assignee = ?, assignee_id = ? WHERE id = ?").run(name, name === null ? null : userId, id);
+    this.emit("ticket", id);
+    return this.require(id);
+  }
+
+  /** Note du client : 1 à 5, ticket fermé, une seule fois. */
+  setRating(id: number, rating: number): Ticket {
+    const t = this.require(id);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new TicketError("La note doit être comprise entre 1 et 5.");
+    if (t.status !== "closed") throw new TicketError("Le ticket n'est pas fermé.");
+    if (t.rating !== null) throw new TicketError("Ce ticket a déjà été noté.");
+    return this.patch(id, "rating = ?", rating);
   }
 
   addMessage(
     ticketId: number,
-    m: { authorId: string; authorName: string; content: string; source: Source },
-  ): void {
+    m: {
+      authorId: string;
+      authorName: string;
+      content: string;
+      source: Source;
+      internal?: boolean;
+      attachments?: NewAttachment[];
+    },
+  ): TicketMessage {
     const now = Date.now();
-    this.db
-      .query("INSERT INTO messages (ticket_id,author_id,author_name,content,source,created_at) VALUES (?,?,?,?,?,?)")
-      .run(ticketId, m.authorId, m.authorName, m.content, m.source, now);
-    // Un message fait remonter le ticket dans la liste ; celui qui parle passe la balle à l'autre.
-    // Les notes système (prise en charge, fermeture…) ne changent pas l'état.
-    const ticket = this.get(ticketId);
-    const awaiting: Awaiting | null =
-      m.source === "system" || !ticket ? null : m.authorId === ticket.userId ? "support" : "customer";
-    this.db
-      .query("UPDATE tickets SET updated_at = MAX(updated_at + 1, ?), awaiting = COALESCE(?, awaiting) WHERE id = ?")
-      .run(now, awaiting, ticketId);
+    const internal = m.internal === true;
+    const messageId = this.db.transaction(() => {
+      const { id } = this.db
+        .query<{ id: number }, [number, string, string, string, string, number, number]>(
+          "INSERT INTO messages (ticket_id,author_id,author_name,content,source,internal,created_at) VALUES (?,?,?,?,?,?,?) RETURNING id",
+        )
+        .get(ticketId, m.authorId, m.authorName, m.content, m.source, internal ? 1 : 0, now)!;
+      for (const a of m.attachments ?? []) {
+        this.db
+          .query("INSERT INTO attachments (message_id,name,mime,size,file,created_at) VALUES (?,?,?,?,?,?)")
+          .run(id, a.name, a.mime, a.size, a.file, now);
+      }
+      // Une note interne ou système ne change rien à l'état du ticket (ni balle, ni tri, ni délais).
+      const ticket = this.get(ticketId);
+      if (!internal && m.source !== "system" && ticket) {
+        const fromCustomer = m.authorId === ticket.userId;
+        this.db
+          .query(
+            `UPDATE tickets SET updated_at = MAX(updated_at + 1, ?), awaiting = ?,
+             waiting_since = ?, first_response_at = COALESCE(first_response_at, ?) WHERE id = ?`,
+          )
+          .run(now, fromCustomer ? "support" : "customer", fromCustomer ? now : null, fromCustomer ? null : now, ticketId);
+      } else if (!internal && m.source === "system") {
+        // Les notes système remontent le ticket dans la liste, comme avant.
+        this.db.query("UPDATE tickets SET updated_at = MAX(updated_at + 1, ?) WHERE id = ?").run(now, ticketId);
+      }
+      return id;
+    })();
     this.emit("message", ticketId);
+    return this.messageById(messageId);
   }
 
   messages(ticketId: number): TicketMessage[] {
-    return this.db
-      .query<
-        {
-          id: number;
-          ticket_id: number;
-          author_id: string;
-          author_name: string;
-          content: string;
-          source: Source;
-          created_at: number;
-        },
-        [number]
-      >("SELECT * FROM messages WHERE ticket_id = ? ORDER BY id ASC")
-      .all(ticketId)
-      .map((r) => ({
-        id: r.id,
-        ticketId: r.ticket_id,
-        authorId: r.author_id,
-        authorName: r.author_name,
-        content: r.content,
-        source: r.source,
-        createdAt: r.created_at,
-      }));
+    const rows = this.db.query<MessageRow, [number]>("SELECT * FROM messages WHERE ticket_id = ? ORDER BY id ASC").all(ticketId);
+    const atts = this.db
+      .query<AttachmentRow, [number]>(
+        "SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id WHERE m.ticket_id = ? ORDER BY a.id ASC",
+      )
+      .all(ticketId);
+    return this.withAttachments(rows, atts);
+  }
+
+  /** Pièce jointe avec son fichier stocké et le serveur du ticket (contrôle d'accès de la route de téléchargement). */
+  attachment(id: number): (Attachment & { file: string; guildId: string }) | null {
+    const r = this.db
+      .query<AttachmentRow & { guild_id: string }, [number]>(
+        `SELECT a.*, t.guild_id FROM attachments a
+         JOIN messages m ON m.id = a.message_id JOIN tickets t ON t.id = m.ticket_id WHERE a.id = ?`,
+      )
+      .get(id);
+    return r ? { ...toAttachment(r), file: r.file, guildId: r.guild_id } : null;
+  }
+
+  private messageById(id: number): TicketMessage {
+    const row = this.db.query<MessageRow, [number]>("SELECT * FROM messages WHERE id = ?").get(id)!;
+    const atts = this.db.query<AttachmentRow, [number]>("SELECT * FROM attachments WHERE message_id = ? ORDER BY id ASC").all(id);
+    return this.withAttachments([row], atts)[0]!;
+  }
+
+  private withAttachments(rows: MessageRow[], atts: AttachmentRow[]): TicketMessage[] {
+    const by = new Map<number, Attachment[]>();
+    for (const a of atts) {
+      const l = by.get(a.message_id) ?? [];
+      l.push(toAttachment(a));
+      by.set(a.message_id, l);
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      ticketId: r.ticket_id,
+      authorId: r.author_id,
+      authorName: r.author_name,
+      content: r.content,
+      source: r.source,
+      createdAt: r.created_at,
+      internal: r.internal === 1,
+      attachments: by.get(r.id) ?? [],
+    }));
+  }
+
+  /** Met à jour un champ sans toucher à l'ordre de la liste, puis notifie. */
+  private patch(id: number, set: string, value: string | number): Ticket {
+    this.db.query(`UPDATE tickets SET ${set} WHERE id = ?`).run(value, id);
+    this.emit("ticket", id);
+    return this.require(id);
   }
 
   private require(id: number): Ticket {
@@ -256,10 +439,22 @@ export class TicketService {
     return t;
   }
 
-  private update(id: number, status: Status, assignee: string | null, closedAt: number | null): Ticket {
+  private update(
+    id: number,
+    status: Status,
+    assignee: string | null,
+    closedAt: number | null,
+    assigneeId: string | null,
+    closeReason: CloseReason | null = null,
+  ): Ticket {
+    // Fermer (ou rouvrir) arrête l'attente ; rouvrir efface aussi raison et note de la fermeture précédente.
     this.db
-      .query("UPDATE tickets SET status = ?, assignee = ?, closed_at = ?, updated_at = ? WHERE id = ?")
-      .run(status, assignee, closedAt, Date.now(), id);
+      .query(
+        `UPDATE tickets SET status = ?, assignee = ?, assignee_id = ?, closed_at = ?, close_reason = ?,
+         rating = CASE WHEN ? = 'open' THEN NULL ELSE rating END,
+         waiting_since = CASE WHEN ? = 'closed' THEN NULL ELSE waiting_since END, updated_at = ? WHERE id = ?`,
+      )
+      .run(status, assignee, assigneeId, closedAt, closeReason, status, status, Date.now(), id);
     this.emit("ticket", id);
     return this.require(id);
   }
