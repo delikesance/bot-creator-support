@@ -205,7 +205,7 @@ function renderHeader() {
   const me = state.me;
   const av = h("span", { class: "avatar accent", style: "--s:36px" }, me?.avatarUrl ? h("img", { src: me.avatarUrl, alt: "", referrerpolicy: "no-referrer" }) : initials(me?.name ?? "?"));
   const bell = h("button", { class: "btn icon ghost bell", type: "button", "aria-label": "Desktop notifications", "aria-pressed": String(state.notify), title: state.notify ? "Notifications on" : "Notifications off", onclick: toggleNotify }, icon("bell"));
-  shell.head.replaceChildren(
+  shell.head.replaceChildren(...[
     h("a", { class: "brand", href: "#", onclick: (e) => { e.preventDefault(); closeTicket(); }, "aria-label": "Support desk, back to the inbox" }, bibi("idle", 28), h("span", {}, "Support"), h("span", { class: "eyebrow" }, "Desk")),
     guildPicker(), shell.field, h("div", { class: "spacer" }),
     h("span", { class: "live" + (state.online ? "" : " off"), role: "status" }, h("span", { class: "sq" }), h("span", {}, state.online ? "LIVE" : "OFFLINE")),
@@ -213,7 +213,7 @@ function renderHeader() {
     me ? dropdown("me", av, [
       { heading: me.name },
       { label: "Sign out", lead: icon("out", 16), onpick: logout },
-    ], { cls: "me-btn", right: true, label: `Account menu, ${me.name}` }) : null);
+    ], { cls: "me-btn", right: true, label: `Account menu, ${me.name}` }) : null].filter(Boolean));
 }
 
 async function logout() { await post("/logout").catch(() => {}); state.me = null; renderLogin(); }
@@ -235,7 +235,8 @@ function renderSide() {
   const nav = (on, onclick, lead, label, n, extra = {}) =>
     h("button", { class: "nav" + (on ? " on" : ""), type: "button", "aria-current": on ? "page" : null, onclick, ...extra }, lead, h("span", { class: "truncate" }, label), n == null ? null : h("b", {}, String(n)));
   const tags = tagList();
-  shell.side.replaceChildren(
+  // replaceChildren turns null into the text "null", so optional sections are filtered out.
+  shell.side.replaceChildren(...[
     h("div", { class: "navgroup" }, h("div", { class: "eyebrow" }, "Views"),
       VIEWS.map(([key, label, c]) => nav(!state.query && state.view === key && !state.tag, () => setView(key), h("span", { class: "sq", style: c ? `--c:${c}` : "" }), label, viewCount(key)))),
     h("div", { class: "navgroup" }, h("div", { class: "eyebrow" }, "Reports"),
@@ -245,7 +246,7 @@ function renderSide() {
     state.tipOff ? null : h("aside", { class: "panel tipcard", "aria-label": "Tip" },
       h("div", { class: "tiphead" }, bibi("idle", 32, true), h("span", { class: "eyebrow", style: "color:var(--accent-ink)" }, "BIBI_")),
       h("p", {}, "Drop a screenshot on a ticket, or paste it, to attach it to your reply. Press ", h("span", { class: "kbd" }, "/"), " to search."),
-      h("button", { class: "btn sm ghost", type: "button", style: "align-self:flex-start", onclick: () => { state.tipOff = true; store.set("tip", "off"); renderSide(); } }, "Got it")));
+      h("button", { class: "btn sm ghost", type: "button", style: "align-self:flex-start", onclick: () => { state.tipOff = true; store.set("tip", "off"); renderSide(); } }, "Got it"))].filter(Boolean));
 }
 
 function setView(key) {
