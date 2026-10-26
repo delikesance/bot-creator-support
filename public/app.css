@@ -354,7 +354,11 @@ a.kv > span:first-child { color:var(--ink); min-width:0; }
 .opt.manage { border-top:1px solid var(--border); margin-top:4px; }
 
 /* ---------- Responsive ---------- */
-@media (max-width:1100px) { .aside { display:none; } }
+.details-btn { display:none; }
+@media (max-width:1100px) { .aside { display:none; } .details-btn { display:inline-flex; } }
+.dialog.sheet { width:min(520px, 100vw - 24px); max-height:86dvh; overflow:auto; padding:0; }
+.sheet-head { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; background:var(--raised); border-bottom:1px solid var(--border); }
+.sheet-head h3 { margin:0; }
 @media (max-width:900px) {
   header.top { flex-wrap:wrap; height:auto; min-height:64px; padding:10px 16px; gap:10px 12px; }
   .brand .eyebrow { display:none; }
