@@ -2,6 +2,8 @@ import type { Database } from "bun:sqlite";
 
 export type Status = "open" | "in_progress" | "closed";
 export type Source = "discord" | "panel" | "system";
+/** À qui est la balle : le support doit répondre, ou on attend le client. */
+export type Awaiting = "support" | "customer";
 
 export interface Ticket {
   id: number;
@@ -11,6 +13,7 @@ export interface Ticket {
   channelId: string;
   subject: string;
   description: string;
+  awaiting: Awaiting;
   status: Status;
   assignee: string | null;
   createdAt: number;
@@ -45,6 +48,7 @@ interface Row {
   channel_id: string;
   subject: string;
   description: string;
+  awaiting: Awaiting;
   status: Status;
   assignee: string | null;
   created_at: number;
@@ -60,6 +64,7 @@ const toTicket = (r: Row): Ticket => ({
   channelId: r.channel_id,
   subject: r.subject,
   description: r.description,
+  awaiting: r.awaiting,
   status: r.status,
   assignee: r.assignee,
   createdAt: r.created_at,
@@ -158,6 +163,25 @@ export class TicketService {
     return out;
   }
 
+  /** Tickets encore actifs selon qui doit répondre. */
+  awaitingStats(guildId?: string): Record<Awaiting, number> {
+    const out: Record<Awaiting, number> = { support: 0, customer: 0 };
+    const rows =
+      guildId === undefined
+        ? this.db
+            .query<{ awaiting: Awaiting; n: number }, []>(
+              "SELECT awaiting, COUNT(*) n FROM tickets WHERE status != 'closed' GROUP BY awaiting",
+            )
+            .all()
+        : this.db
+            .query<{ awaiting: Awaiting; n: number }, [string]>(
+              "SELECT awaiting, COUNT(*) n FROM tickets WHERE status != 'closed' AND guild_id = ? GROUP BY awaiting",
+            )
+            .all(guildId);
+    for (const r of rows) out[r.awaiting] = r.n;
+    return out;
+  }
+
   claim(id: number, by: { id: string; name: string }): Ticket {
     const t = this.require(id);
     if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
@@ -190,8 +214,14 @@ export class TicketService {
     this.db
       .query("INSERT INTO messages (ticket_id,author_id,author_name,content,source,created_at) VALUES (?,?,?,?,?,?)")
       .run(ticketId, m.authorId, m.authorName, m.content, m.source, now);
-    // Un message fait remonter le ticket dans la liste du panel.
-    this.db.query("UPDATE tickets SET updated_at = MAX(updated_at + 1, ?) WHERE id = ?").run(now, ticketId);
+    // Un message fait remonter le ticket dans la liste ; celui qui parle passe la balle à l'autre.
+    // Les notes système (prise en charge, fermeture…) ne changent pas l'état.
+    const ticket = this.get(ticketId);
+    const awaiting: Awaiting | null =
+      m.source === "system" || !ticket ? null : m.authorId === ticket.userId ? "support" : "customer";
+    this.db
+      .query("UPDATE tickets SET updated_at = MAX(updated_at + 1, ?), awaiting = COALESCE(?, awaiting) WHERE id = ?")
+      .run(now, awaiting, ticketId);
     this.emit("message", ticketId);
   }
 
