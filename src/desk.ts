@@ -1,4 +1,5 @@
 import { TicketError, TicketService, type Ticket } from "./tickets";
+import { welcomeText } from "./i18n";
 
 /** Pont vers Discord : tout ce que le métier doit pouvoir faire côté serveur. */
 export interface Gateway {
@@ -33,6 +34,8 @@ export class SupportDesk {
     userName: string;
     subject: string;
     description?: string;
+    /** Locale Discord de l'utilisateur (« fr », « en-US »…) : langue du message d'accueil. */
+    locale?: string;
   }): Promise<Ticket> {
     const subject = input.subject.trim().slice(0, MAX_SUBJECT);
     const description = (input.description ?? "").trim().slice(0, MAX_DESCRIPTION);
@@ -51,10 +54,7 @@ export class SupportDesk {
     if (description) {
       this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: description, source: "discord" });
     }
-    await this.gw.send(
-      channelId,
-      `🎫 <@${input.userId}> Ton ticket #${ticket.id} a bien été reçu : un membre de l'équipe va bientôt le prendre en charge.`,
-    );
+    await this.gw.send(channelId, welcomeText(input.locale, ticket.id, input.userId));
     return ticket;
   }
 

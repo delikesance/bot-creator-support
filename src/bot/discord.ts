@@ -151,6 +151,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     id: i.isChatInputCommand() ? i.commandName : i.customId,
     userId: i.user.id,
     userName: i.user.username,
+    locale: i.locale,
     guildId: i.guildId,
     channelId: i.channelId ?? "",
     isStaff: !!i.memberPermissions?.has(PermissionFlagsBits.ManageChannels) || hasRole,

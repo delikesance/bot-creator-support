@@ -1,5 +1,6 @@
 import type { SupportDesk } from "../desk";
 import { TicketError } from "../tickets";
+import { openedText } from "../i18n";
 
 /** Vue minimale d'une interaction Discord, pour rester testable sans réseau. */
 export interface Ix {
@@ -14,6 +15,8 @@ export interface Ix {
   isStaff: boolean;
   subject?: string;
   description?: string;
+  /** Locale Discord de l'utilisateur (`interaction.locale`). */
+  locale?: string;
   /** Réponse visible uniquement par l'auteur. */
   reply(text: string): Promise<void>;
   showSubjectModal(): Promise<void>;
@@ -40,8 +43,8 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   if (kind === "modal" && id === "ticket:modal") {
-    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "", description: ix.description });
-    return ix.reply(`✅ Ton ticket #${t.id} est ouvert : <#${t.channelId}>`);
+    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "", description: ix.description, locale: ix.locale });
+    return ix.reply(openedText(ix.locale, t.id, t.channelId));
   }
 
   if (kind === "command" && id === "setup") {

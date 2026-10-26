@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe("ouverture", () => {
   test("crée salon + ticket + message d'accueil", async () => {
-    const t = await desk.open({ ...user, subject: "Bug" });
+    const t = await desk.open({ ...user, subject: "Bug", locale: "fr" });
     expect(t.channelId).toBe("chan1");
     expect(t.status).toBe("open");
     expect(gw.sent[0]!.channelId).toBe("chan1");
