@@ -14,24 +14,28 @@ const gw: Gateway = {
   deleteChannel: async () => {},
 };
 const desk = new SupportDesk(new TicketService(openDb(":memory:")), gw);
-const subjects: [string, string][] = [
-  ["alice", "Impossible de me connecter à mon compte"],
-  ["bob", "Question sur la facturation"],
-  ["chloé", "Bug d'affichage sur mobile"],
-  ["david", "Demande de remboursement"],
-  ["emma", "Comment changer mon pseudo ?"],
-];
-for (const [user, subject] of subjects) {
-  const t = await desk.open({ guildId: "g1", userId: user, userName: user, subject });
-  desk.recordDiscordMessage(t.channelId, { id: user, name: user }, "Bonjour, j'ai besoin d'aide s'il vous plaît.");
-}
-await desk.reply(2, "Bonjour Bob, je regarde votre facture tout de suite.", "Support");
-desk.recordDiscordMessage("demo3", { id: "staff", name: "Support" }, "Je regarde ça.");
-await desk.close(4, "Support");
-await desk.close(5, "Support");
+const open = (guildId: string, user: string, subject: string, description: string) =>
+  desk.open({ guildId, userId: user, userName: user, subject, description, locale: "fr" });
+const say = (id: number, user: string, text: string) => desk.recordDiscordMessage(`demo${id}`, { id: user, name: user }, text);
+
+// g1 : un de chaque état (attend le support, attend le client, échange en cours, résolus).
+await open("g1", "alice", "Impossible de me connecter à mon compte",
+  "Depuis ce matin, j'obtiens « identifiants invalides » alors que mon mot de passe n'a pas changé. J'ai essayé sur mobile et sur ordinateur.");
+await open("g1", "bob", "Question sur la facturation",
+  "Ma dernière facture indique deux prélèvements pour le même mois. Pouvez-vous vérifier ?");
+await desk.reply(2, "Bonjour Bob, je regarde votre facture tout de suite.", "Angelo");
+await open("g1", "chloé", "Bug d'affichage sur mobile",
+  "Sur iPhone, le menu se superpose au contenu de la page d'accueil. Capture d'écran ci-dessous.");
+await desk.reply(3, "Merci Chloé ! Quel modèle et quelle version d'iOS ?", "Angelo");
+say(3, "chloé", "Un iPhone 14, iOS 17.5. Voilà ce que je vois : http://localhost:3200/demo/pic.png");
+await open("g1", "david", "Demande de remboursement", "J'ai acheté deux fois le même abonnement par erreur.");
+await desk.reply(4, "C'est fait, le remboursement arrive sous 3 à 5 jours ouvrés.", "Angelo");
+await desk.close(4, "Angelo");
+await open("g1", "emma", "Comment changer mon pseudo ?", "Je ne trouve pas l'option dans les paramètres.");
+await desk.reply(5, "Dans Paramètres > Profil > Pseudo. N'hésite pas si tu bloques !", "Angelo");
+await desk.close(5, "Angelo");
 for (const [user, subject] of [["farid", "Mon bot ne répond plus"], ["gaëlle", "Accès au salon VIP"]] as const) {
-  const t = await desk.open({ guildId: "g2", userId: user, userName: user, subject });
-  desk.recordDiscordMessage(t.channelId, { id: user, name: user }, "Bonjour, pouvez-vous m'aider ?");
+  await open("g2", user, subject, "Bonjour, pouvez-vous m'aider ? Le problème est apparu hier soir.");
 }
 const directory = {
   list: () => [

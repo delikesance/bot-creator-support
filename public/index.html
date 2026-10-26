@@ -392,6 +392,8 @@ function renderText(text) {
     last = m.index + url.length;
     if (isImage(url)) {
       const img = h("img", { src:url, alt:"Image jointe", loading:"lazy", referrerpolicy:"no-referrer" });
+      // Une image qui finit de charger agrandit la conversation : on reste calé en bas si on y était.
+      img.addEventListener("load", () => { const m = img.closest(".msgs"); if (m?.dataset.stick) m.scrollTop = m.scrollHeight; });
       const a = h("a", { class:"att", href:url, target:"_blank", rel:"noopener noreferrer", title:"Ouvrir l'image" }, img);
       // Clic simple : visionneuse du panel. Ctrl/Cmd/clic milieu gardent l'ouverture dans un onglet.
       a.addEventListener("click", (e) => {
@@ -427,7 +429,7 @@ function kpi(key, i) {
   return h("button", { class:"kpi" + (state.filter === key ? " active" : "") + (state.animate ? " rise" : ""), style:`--c:${s.color};--i:${i}`,
     "aria-pressed":String(state.filter === key),
     onclick: () => { state.filter = state.filter === key ? "" : key; if (state.filter) state.wait = ""; renderMain(); } },
-    h("div", { class:"eyebrow lbl" }, h("span", { class:"sq" }), s.label + "s"), n, h("small", {}, s.hint));
+    h("div", { class:"eyebrow lbl" }, h("span", { class:"sq" }), (key === "in_progress" ? s.label : s.label + "s")), n, h("small", {}, s.hint));
 }
 
 const WAIT = { support:"En attente du support", customer:"En attente du client" };
@@ -496,6 +498,7 @@ function renderDetail() {
   const atBottom = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 80;
   const keep = sameTicket && !atBottom ? old.scrollTop : null;
   state.shown = t.id;
+  if (keep === null) msgs.dataset.stick = "1";
   requestAnimationFrame(() => { msgs.scrollTop = keep ?? msgs.scrollHeight; });
 
   const closed = t.status === "closed";
