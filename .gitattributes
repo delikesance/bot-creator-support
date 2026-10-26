@@ -1,0 +1,2 @@
+deploy/deploy-support text eol=lf
+*.sh text eol=lf

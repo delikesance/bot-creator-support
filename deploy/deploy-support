@@ -1,0 +1,57 @@
+#!/bin/bash
+# Forced command of the CI deploy key: updates the support bot to the image tag it is given.
+# Usage (from CI): ssh root@host "sha-1a2b3c4"   (no argument = latest)
+# Pulls the image, restarts the bot, waits for its health check, and rolls back to the previous image if it fails.
+set -euo pipefail
+
+DIR=/home/ubuntu/bot-creator-support
+IMAGE=ghcr.io/delikesance/bot-creator-support
+CONTAINER=bot-creator-support-support-1
+TAG="${SSH_ORIGINAL_COMMAND:-latest}"
+
+[[ "$TAG" =~ ^(latest|sha-[a-f0-9]{7,40}|v[0-9][0-9A-Za-z.\-]*)$ ]] || { echo "refused tag: $TAG" >&2; exit 2; }
+
+exec 9>/var/lock/support-deploy.lock
+flock -n 9 || { echo "another deploy is running" >&2; exit 3; }
+
+cd "$DIR"
+
+set_tag() {
+  if grep -q '^SUPPORT_TAG=' .env; then sed -i "s/^SUPPORT_TAG=.*/SUPPORT_TAG=$1/" .env; else printf '\nSUPPORT_TAG=%s\n' "$1" >> .env; fi
+}
+
+healthy() {
+  local s
+  for _ in $(seq 1 50); do
+    s=$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo none)
+    [ "$s" = healthy ] && return 0
+    [ "$s" = unhealthy ] && return 1
+    sleep 3
+  done
+  return 1
+}
+
+# Keep the image that is running now under a fixed tag, so a rollback is always possible.
+PREV_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER" 2>/dev/null || true)
+[ -n "$PREV_ID" ] && docker tag "$PREV_ID" "$IMAGE:previous"
+
+echo "deploying $IMAGE:$TAG"
+docker pull "$IMAGE:$TAG"
+set_tag "$TAG"
+docker compose up -d support
+
+if healthy; then
+  echo "ok: $TAG is healthy"
+  docker image prune -f >/dev/null
+  exit 0
+fi
+
+echo "unhealthy after deploy" >&2
+docker logs --tail 30 "$CONTAINER" >&2 || true
+if [ -n "$PREV_ID" ]; then
+  echo "rolling back to the previous image" >&2
+  set_tag previous
+  docker compose up -d support
+  healthy && echo "rolled back, the bot is healthy again" >&2
+fi
+exit 1
