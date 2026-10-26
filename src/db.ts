@@ -63,6 +63,23 @@ export function openDb(path: string): Database {
     created_at INTEGER NOT NULL
   )`);
   db.run("CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)");
+  db.run(`CREATE TABLE IF NOT EXISTS replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    text TEXT NOT NULL,
+    UNIQUE (guild_id, name)
+  )`);
+  // Journal d'audit ; ticket_id est nul pour les actions hors ticket (réponses enregistrées).
+  db.run(`CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+    at INTEGER NOT NULL,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT ''
+  )`);
+  db.run("CREATE INDEX IF NOT EXISTS idx_audit_ticket ON audit(ticket_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_guild ON tickets(guild_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)");
   db.run("CREATE INDEX IF NOT EXISTS idx_messages_ticket ON messages(ticket_id)");
