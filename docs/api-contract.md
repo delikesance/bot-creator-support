@@ -35,6 +35,7 @@ priority: Priority;               // default "normal"
 tags: string[];                   // lowercase, [a-z0-9-], 1..24 chars, max 8
 assigneeId: string | null;        // `assignee` (name) already exists
 closeReason: CloseReason | null;
+channelDeletedAt: number | null;   // set when the Discord channel is gone; replies and reopening answer 409
 rating: number | null;            // 1..5
 firstResponseAt: number | null;   // first staff message
 waitingSince: number | null;      // time of the last customer message while awaiting === "support"

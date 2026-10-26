@@ -47,6 +47,7 @@ export function openDb(path: string): Database {
     ["rating", "INTEGER"],
     ["first_response_at", "INTEGER"],
     ["waiting_since", "INTEGER"],
+    ["channel_deleted_at", "INTEGER"],
   ];
   for (const [name, def] of added) {
     if (!cols.some((c) => c.name === name)) db.run(`ALTER TABLE tickets ADD COLUMN ${name} ${def}`);

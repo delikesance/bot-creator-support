@@ -87,7 +87,8 @@ export function createComposer(opts) {
     ta, filesEl, prevEl, bar);
   const el = h("form", { class: "composer", "aria-label": "Reply", novalidate: true, onsubmit: (e) => { e.preventDefault(); submit(); } }, tabs, box, live, fileInput, imageInput);
 
-  const closed = () => ticket.status === "closed";
+  // Locked when closed, or when the Discord channel no longer exists (nothing can be delivered).
+  const closed = () => ticket.status === "closed" || !!ticket.channelDeletedAt;
   const say = (msg) => { live.textContent = ""; setTimeout(() => { live.textContent = msg; }, 20); };
 
   /* ----- Attachments ----- */
@@ -151,7 +152,8 @@ export function createComposer(opts) {
     el.classList.toggle("closed", isClosed);
     el.classList.toggle("note", mode === "note");
     ta.disabled = isClosed;
-    ta.placeholder = isClosed ? "Ticket closed. Reopen it to reply."
+    ta.placeholder = ticket.channelDeletedAt ? "The Discord channel was deleted. Nothing can be sent."
+      : isClosed ? "Ticket closed. Reopen it to reply."
       : mode === "note" ? "Write a note for your team. It is never sent to Discord."
       : `Write a reply. It is posted in the Discord channel as ${me?.name ?? "you"}.`;
     const hint = h("span", { class: "small" }, mode === "note" ? "Visible to staff only" : ["Sent to Discord as ", h("b", {}, me?.name ?? "you")]);
