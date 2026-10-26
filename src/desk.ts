@@ -47,38 +47,36 @@ export class SupportDesk {
     if (description) {
       this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: description, source: "discord" });
     }
-    const quoted = description ? `\n**Description :**\n${description.split("\n").map((l) => `> ${l}`).join("\n")}\n` : "";
     await this.gw.send(
       channelId,
-      `🎫 **Ticket #${ticket.id}** — <@${input.userId}>\n**Sujet :** ${subject}\n${quoted}\nAjoute ici tout ce qui peut aider, l'équipe support te répondra rapidement.`,
-      { controls: "active" },
+      `🎫 <@${input.userId}> Ton ticket #${ticket.id} a bien été reçu : un membre de l'équipe va bientôt le prendre en charge.`,
     );
     return ticket;
   }
 
   async claim(id: number, by: Actor): Promise<Ticket> {
     const t = this.tickets.claim(id, by);
-    await this.notify(t, `🟡 Ticket pris en charge par **${by.name}**.`);
+    await this.notify(t, `🟡 Ticket pris en charge par **${by.name}**.`, undefined, "🟡 Ton ticket est pris en charge, l'équipe te répond ici.");
     return t;
   }
 
   async release(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.release(id);
-    await this.notify(t, `🟢 Ticket remis en file d'attente par **${by}**.`);
+    await this.notify(t, `🟢 Ticket remis en file d'attente par **${by}**.`, undefined, null);
     return t;
   }
 
   async close(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.close(id);
     await this.gw.setUserLocked(t.channelId, t.userId, true).catch(() => {});
-    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, "closed");
+    await this.notify(t, `🔴 Ticket fermé par **${by}**.`, undefined, "🔴 Ton ticket est fermé. Merci de nous avoir contactés !");
     return t;
   }
 
   async reopen(id: number, by: string): Promise<Ticket> {
     const t = this.tickets.reopen(id);
     await this.gw.setUserLocked(t.channelId, t.userId, false).catch(() => {});
-    await this.notify(t, `🟢 Ticket rouvert par **${by}**.`);
+    await this.notify(t, `🟢 Ticket rouvert par **${by}**.`, undefined, "🟢 Ton ticket a été rouvert.");
     return t;
   }
 
@@ -96,7 +94,8 @@ export class SupportDesk {
     if (t.status === "closed") throw new TicketError("Ce ticket est fermé.");
     const text = content.trim();
     if (!text) throw new TicketError("Le message est vide.");
-    await this.gw.send(t.channelId, `**${authorName}** : ${text}`);
+    // Côté Discord, c'est simplement le bot support qui écrit : pas de nom d'admin.
+    await this.gw.send(t.channelId, text);
     this.tickets.addMessage(id, { authorId: "panel", authorName, content: text, source: "panel" });
   }
 
@@ -116,8 +115,10 @@ export class SupportDesk {
     }
   }
 
-  private async notify(t: Ticket, text: string, controls?: "active" | "closed") {
+  /** `shown` : texte visible sur Discord (par défaut celui de l'historique ; null = rien n'est envoyé). */
+  private async notify(t: Ticket, text: string, controls?: "active" | "closed", shown: string | null = text) {
     this.tickets.addMessage(t.id, { authorId: "system", authorName: "Système", content: text, source: "system" });
-    await this.gw.send(t.channelId, text, controls ? { controls } : undefined).catch(() => {});
+    if (shown === null) return;
+    await this.gw.send(t.channelId, shown, controls ? { controls } : undefined).catch(() => {});
   }
 }

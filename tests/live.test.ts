@@ -22,12 +22,9 @@ beforeEach(() => {
 });
 
 describe("description du ticket", () => {
-  test("stockée, annoncée dans le salon et historisée comme message de l'utilisateur", async () => {
+  test("stockée et historisée comme message de l'utilisateur", async () => {
     const t = await desk.open({ ...user, subject: "Bug", description: "Le bouton ne répond pas\nsur mobile" });
     expect(t.description).toBe("Le bouton ne répond pas\nsur mobile");
-    const welcome = sent.find((s) => s.channelId === t.channelId)!.text;
-    expect(welcome).toContain("**Sujet :** Bug");
-    expect(welcome).toContain("> Le bouton ne répond pas\n> sur mobile");
     const msgs = desk.tickets.messages(t.id);
     const d = msgs.find((m) => m.source === "discord")!;
     expect(d).toMatchObject({ authorId: "u1", authorName: "alice", content: "Le bouton ne répond pas\nsur mobile" });
@@ -133,5 +130,24 @@ describe("flux temps réel (SSE)", () => {
     await readUntil(reader, "connected");
     await reader.cancel();
     expect(desk.tickets.listenerCount()).toBe(0);
+  });
+});
+
+describe("conversation côté utilisateur", () => {
+  test("aucun bouton de staff dans le salon : tout se gère depuis le panel", async () => {
+    const opts: unknown[] = [];
+    const d = new SupportDesk(new TicketService(openDb(":memory:")), { ...gw, send: async (_c, _t, o) => void opts.push(o) });
+    const t = await d.open({ ...user, subject: "a", description: "d" });
+    await d.claim(t.id, { id: "s", name: "Staff" });
+    await d.close(t.id, "Staff");
+    await d.reopen(t.id, "Staff");
+    expect(opts.every((o) => o === undefined)).toBe(true);
+  });
+  test("remettre en attente n'écrit rien à l'utilisateur", async () => {
+    const t = await desk.open({ ...user, subject: "a" });
+    await desk.claim(t.id, { id: "s", name: "Staff" });
+    const n = sent.length;
+    await desk.release(t.id, "Staff");
+    expect(sent.length).toBe(n);
   });
 });

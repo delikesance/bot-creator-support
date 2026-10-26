@@ -39,7 +39,15 @@ describe("ouverture", () => {
     expect(t.channelId).toBe("chan1");
     expect(t.status).toBe("open");
     expect(gw.sent[0]!.channelId).toBe("chan1");
-    expect(gw.sent[0]!.text).toContain("Bug");
+    expect(gw.sent[0]!.text).toContain("<@u1>");
+    expect(gw.sent[0]!.text).toContain("bientôt");
+  });
+  test("un seul message sobre : pas d'introduction ni d'écho du sujet", async () => {
+    await desk.open({ ...user, subject: "Bug", description: "détails" });
+    expect(gw.sent).toHaveLength(1);
+    expect(gw.sent[0]!.text).not.toContain("Bug");
+    expect(gw.sent[0]!.text).not.toContain("détails");
+    expect(gw.sent[0]!.text.length).toBeLessThan(160);
   });
 
   test("limite par utilisateur appliquée AVANT de créer le salon", async () => {
@@ -63,7 +71,10 @@ describe("cycle de vie", () => {
     const t = await desk.open({ ...user, subject: "a" });
     const c = await desk.claim(t.id, { id: "a1", name: "admin" });
     expect(c.status).toBe("in_progress");
-    expect(gw.sent.at(-1)!.text).toContain("admin");
+    // L'utilisateur voit un message neutre, sans le nom de l'admin ; l'historique du panel le garde.
+    expect(gw.sent.at(-1)!.text).toContain("pris en charge");
+    expect(gw.sent.at(-1)!.text).not.toContain("admin");
+    expect(desk.tickets.messages(t.id).at(-1)!.content).toContain("admin");
   });
 
   test("close verrouille l'utilisateur et notifie", async () => {
@@ -101,7 +112,7 @@ describe("messages", () => {
   test("réponse du panel envoyée dans Discord et historisée", async () => {
     const t = await desk.open({ ...user, subject: "a" });
     await desk.reply(t.id, "Bonjour", "Support");
-    expect(gw.sent.at(-1)).toEqual({ channelId: "chan1", text: "**Support** : Bonjour" });
+    expect(gw.sent.at(-1)).toEqual({ channelId: "chan1", text: "Bonjour" });
     const m = desk.tickets.messages(t.id).at(-1)!;
     expect(m.source).toBe("panel");
   });

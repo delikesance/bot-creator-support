@@ -119,11 +119,12 @@ describe("avec OAuth actif", () => {
     expect((await r.json()).name).toBe("Angelo");
   });
 
-  test("la réponse du panel est signée du nom de l'admin Discord", async () => {
+  test("la réponse part sans nom sur Discord mais l'historique garde l'admin", async () => {
     const c = await session();
     const t = await desk.open({ userId: "u", guildId: "g1", userName: "alice", subject: "a" });
     await handle(new Request(`http://x/api/tickets/${t.id}/reply`, { method: "POST", headers: { cookie: c }, body: JSON.stringify({ content: "Salut" }) }));
-    expect(sent.at(-1)).toBe("**Angelo** : Salut");
+    expect(sent.at(-1)).toBe("Salut");
+    expect(desk.tickets.messages(t.id).at(-1)).toMatchObject({ authorName: "Angelo", source: "panel" });
   });
 
   test("la prise en charge est attribuée à l'admin", async () => {
