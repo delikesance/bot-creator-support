@@ -22,6 +22,8 @@ import type { Gateway, OutFile, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
 import { pack } from "../i18n";
 import { registerCommands } from "./register";
+import { assetPath, setupEmbed, styledMessage, type Style } from "./embeds";
+import { SETUP_EN } from "../i18n";
 
 const button = (id: string, label: string, style: ButtonStyle) =>
   new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
@@ -95,7 +97,7 @@ export class DiscordGateway implements Gateway {
   async send(
     channelId: string,
     text: string,
-    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[] },
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[]; style?: Style },
   ): Promise<void> {
     const ch = await this.channel(channelId);
     const files = opts?.files?.map((f) => ({ attachment: Buffer.from(f.data), name: f.name }));
@@ -118,12 +120,16 @@ export class DiscordGateway implements Gateway {
     }
     const components =
       opts?.controls === "active" ? [activeRow()] : opts?.controls === "closed" ? [closedRow()] : [];
+    // Accueil et fermeture : texte localisé dans un embed aux couleurs du desk, Bibi en vignette (fichier joint).
+    const styled = opts?.style ? styledMessage(text, opts.style) : null;
+    const all = [...(files ?? []), ...(styled?.files.map((n) => ({ attachment: assetPath(n), name: n })) ?? [])];
     await ch.send({
-      content: text || undefined,
-      files,
+      content: (styled ? styled.content : text) || undefined,
+      embeds: styled ? [styled.embed] : [],
+      files: all,
       components,
       // Seul le message d'accueil peut notifier l'auteur ; les réponses du panel ne ping personne.
-      allowedMentions: opts?.controls === "active" ? { parse: ["users"] } : { parse: [] },
+      allowedMentions: opts?.controls === "active" || opts?.style === "welcome" ? { parse: ["users"] } : { parse: [] },
     });
   }
 
@@ -193,13 +199,13 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     },
     postPanel: async () => {
       const ch = i.channel;
-      // Le panneau est public : il suit la langue du serveur ; la confirmation, celle de l'admin.
-      const pp = pack(i.guildLocale ?? i.locale);
+      // Le panneau est public et toujours en anglais (ni langue du serveur ni celle de l'admin) ; seule la confirmation suit l'admin.
       if (ch && "send" in ch) {
         await ch.send({
-          content: pp.panel,
+          embeds: [setupEmbed()],
+          files: [{ attachment: assetPath("banner.png"), name: "banner.png" }],
           components: [
-            new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:open", pp.panelBtn, ButtonStyle.Primary)),
+            new ActionRowBuilder<ButtonBuilder>().addComponents(button("ticket:open", SETUP_EN.button, ButtonStyle.Primary)),
           ],
         });
       }

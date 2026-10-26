@@ -140,6 +140,6 @@ describe("conversation côté utilisateur", () => {
     const t = await d.open({ ...user, subject: "a", description: "d" });
     await d.close(t.id, "Staff");
     await d.reopen(t.id, "Staff");
-    expect(opts.every((o) => o === undefined)).toBe(true);
+    expect(opts.every((o) => o?.controls === undefined)).toBe(true);
   });
 });
