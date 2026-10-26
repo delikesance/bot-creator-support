@@ -22,7 +22,7 @@ export interface Gateway {
   send(
     channelId: string,
     text: string,
-    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[] },
+    opts?: { controls?: "active" | "closed"; as?: { name: string; avatarUrl?: string }; files?: OutFile[]; style?: "welcome" | "closed" },
   ): Promise<void>;
   setUserLocked(channelId: string, userId: string, locked: boolean): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
@@ -99,7 +99,7 @@ export class SupportDesk {
     if (description) {
       this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: description, source: "discord" });
     }
-    await this.gw.send(channelId, welcomeText(input.locale, ticket.id, input.userId));
+    await this.gw.send(channelId, welcomeText(input.locale, ticket.id, input.userId), { style: "welcome" });
     return ticket;
   }
 

@@ -406,3 +406,20 @@ export function commandLocalizations(key: "cmdTicket" | "cmdClose" | "cmdSetup")
   for (const [lang, codes] of Object.entries(DISCORD_LOCALES)) for (const c of codes) out[c] = PACKS[lang]![key];
   return out;
 }
+
+/**
+ * Panneau « Ouvrir un ticket » posté par /setup : toujours en anglais, quelles que soient les langues
+ * du serveur et de l'admin (c'est un message public, pas une réponse à un utilisateur).
+ */
+export const SETUP_EN = {
+  title: "Stuck? Open a ticket.",
+  description:
+    "Describe the problem. A private channel opens for you and the team, and every reply reaches you right here on Discord.",
+  fields: [
+    { name: "Private", value: "Only you and the team can read it." },
+    { name: "Your language", value: "Write in yours. Replies come in English." },
+    { name: "Files welcome", value: "Screenshots, logs and documents." },
+  ],
+  footer: "One open ticket per person.",
+  button: "Open a ticket",
+} as const;
