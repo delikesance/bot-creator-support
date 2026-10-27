@@ -1,4 +1,4 @@
-import type { SupportDesk } from "../desk";
+import type { IncomingFile, SupportDesk } from "../desk";
 import { TicketError } from "../tickets";
 import { openedText, pack } from "../i18n";
 
@@ -15,6 +15,8 @@ export interface Ix {
   isStaff: boolean;
   subject?: string;
   description?: string;
+  /** Fichiers joints dans la modale. */
+  files?: IncomingFile[];
   /** Locale Discord de l'utilisateur (`interaction.locale`). */
   locale?: string;
   /** Catégorie choisie dans l'option de /setup. */
@@ -45,7 +47,7 @@ async function route(desk: SupportDesk, ix: Ix): Promise<void> {
   }
 
   if (kind === "modal" && id === "ticket:modal") {
-    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "", description: ix.description, locale: ix.locale });
+    const t = await desk.open({ guildId: ix.guildId, userId: ix.userId, userName: ix.userName, subject: ix.subject ?? "", description: ix.description, locale: ix.locale, files: ix.files });
     return ix.reply(openedText(ix.locale, t.id, t.channelId));
   }
 

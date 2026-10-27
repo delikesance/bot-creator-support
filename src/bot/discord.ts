@@ -7,6 +7,8 @@ import {
   Events,
   GatewayIntentBits,
   MessageFlags,
+  FileUploadBuilder,
+  LabelBuilder,
   ModalBuilder,
   PermissionFlagsBits,
   REST,
@@ -21,6 +23,7 @@ import type { Config } from "../config";
 import type { Gateway, OutFile, SupportDesk } from "../desk";
 import { handleInteraction, type Ix } from "./handlers";
 import { pack } from "../i18n";
+import { MAX_FILES } from "../storage";
 import { registerCommands } from "./register";
 import { assetPath, ratingMessage, setupEmbed, styledMessage, type Style } from "./embeds";
 import { SETUP_EN } from "../i18n";
@@ -188,6 +191,7 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
     isStaff: !!i.memberPermissions?.has(PermissionFlagsBits.ManageChannels) || hasRole,
     subject: i.isModalSubmit() ? i.fields.getTextInputValue("subject") : undefined,
     description: i.isModalSubmit() ? i.fields.getTextInputValue("description") : undefined,
+    files: i.isModalSubmit() ? [...(i.fields.getUploadedFiles("files", false)?.values() ?? [])].map((a) => ({ name: a.name, size: a.size, url: a.url })) : undefined,
     category: (() => {
       const c = i.isChatInputCommand() ? i.options.getChannel("category") : null;
       return c ? { id: c.id, name: "name" in c && c.name ? c.name : c.id } : undefined;
@@ -199,26 +203,33 @@ function toIx(i: Interaction, cfg: Pick<Config, "supportRoleId">): Ix | null {
           new ModalBuilder()
             .setCustomId("ticket:modal")
             .setTitle(pack(i.locale).modalTitle)
-            .addComponents(
-              new ActionRowBuilder<TextInputBuilder>().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("subject")
-                  .setLabel(pack(i.locale).subjectLabel)
-                  .setPlaceholder(pack(i.locale).subjectPh)
-                  .setStyle(TextInputStyle.Short)
-                  .setMaxLength(100)
-                  .setRequired(true),
-              ),
-              new ActionRowBuilder<TextInputBuilder>().addComponents(
-                new TextInputBuilder()
-                  .setCustomId("description")
-                  .setLabel(pack(i.locale).descLabel)
-                  .setPlaceholder(pack(i.locale).descPh)
-                  .setStyle(TextInputStyle.Paragraph)
-                  .setMinLength(20)
-                  .setMaxLength(1000)
-                  .setRequired(true),
-              ),
+            // Les zones de texte et le champ de fichiers vivent dans des « labels » (le champ de fichiers n'existe pas dans une ligne d'actions).
+            .addLabelComponents(
+              new LabelBuilder()
+                .setLabel(pack(i.locale).subjectLabel)
+                .setTextInputComponent(
+                  new TextInputBuilder()
+                    .setCustomId("subject")
+                    .setPlaceholder(pack(i.locale).subjectPh)
+                    .setStyle(TextInputStyle.Short)
+                    .setMaxLength(100)
+                    .setRequired(true),
+                ),
+              new LabelBuilder()
+                .setLabel(pack(i.locale).descLabel)
+                .setTextInputComponent(
+                  new TextInputBuilder()
+                    .setCustomId("description")
+                    .setPlaceholder(pack(i.locale).descPh)
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setMinLength(20)
+                    .setMaxLength(1000)
+                    .setRequired(true),
+                ),
+              new LabelBuilder()
+                .setLabel(pack(i.locale).filesLabel)
+                .setDescription(pack(i.locale).filesDesc)
+                .setFileUploadComponent(new FileUploadBuilder().setCustomId("files").setMinValues(0).setMaxValues(MAX_FILES).setRequired(false)),
             ),
         );
       }
