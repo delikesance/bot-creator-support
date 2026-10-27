@@ -100,6 +100,8 @@ export class SupportDesk {
     description?: string;
     /** Locale Discord de l'utilisateur (« fr », « en-US »…) : langue du message d'accueil. */
     locale?: string;
+    /** Fichiers joints dans le formulaire (URL Discord temporaires) : enregistrés et republiés dans le salon. */
+    files?: IncomingFile[];
   }): Promise<Ticket> {
     const subject = input.subject.trim().slice(0, MAX_SUBJECT);
     const description = (input.description ?? "").trim().slice(0, MAX_DESCRIPTION);
@@ -119,6 +121,7 @@ export class SupportDesk {
       this.tickets.addMessage(ticket.id, { authorId: input.userId, authorName: input.userName, content: description, source: "discord" });
     }
     await this.gw.send(channelId, welcomeText(input.locale, ticket.id, input.userId), { style: "welcome" });
+    if (input.files?.length) await this.attachFormFiles(ticket, input.files);
     return ticket;
   }
 
@@ -278,9 +281,22 @@ export class SupportDesk {
     }
   }
 
+  /** Fichiers du formulaire : historisés comme un message du client, puis republiés dans le salon sous son nom. Un échec ne bloque pas le ticket. */
+  private async attachFormFiles(t: Ticket, files: IncomingFile[]) {
+    try {
+      const { stored, notes, out } = await this.fetchIncoming(files);
+      if (stored.length) this.tickets.addMessage(t.id, { authorId: t.userId, authorName: t.userName, content: "", source: "discord", attachments: stored });
+      for (const note of notes) this.tickets.addMessage(t.id, { authorId: "system", authorName: "System", content: note, source: "system" });
+      if (out.length) await this.gw.send(t.channelId, "", { as: { name: t.userName }, files: out });
+    } catch (e) {
+      console.error("Saving the form files failed:", e);
+    }
+  }
+
   /** Télécharge et stocke les pièces jointes ; un échec saute le fichier et produit une note système (avec le lien CDN, valable ~24 h). */
-  private async fetchIncoming(files: IncomingFile[]): Promise<{ stored: NewAttachment[]; notes: string[] }> {
+  private async fetchIncoming(files: IncomingFile[]): Promise<{ stored: NewAttachment[]; notes: string[]; out: OutFile[] }> {
     const stored: NewAttachment[] = [];
+    const out: OutFile[] = [];
     const notes: string[] = [];
     const dir = this.opts.attachmentsDir;
     const download = this.opts.download ?? ((url: string) => downloadFile(url));
@@ -291,12 +307,13 @@ export class SupportDesk {
         const data = await download(f.url);
         const v = validateFile({ name: f.name, data });
         stored.push({ name: v.name, mime: v.mime, size: v.size, file: await storeFile(dir, data, v.ext) });
+        out.push({ name: v.name, data });
       } catch (e) {
         const why = e instanceof Error ? e.message : String(e);
         notes.push(`⚠️ Attachment "${f.name}" was not saved (${why}). Discord link, valid for about 24 hours: ${f.url}`);
       }
     }
-    return { stored, notes };
+    return { stored, notes, out };
   }
 
   /** Premier membre du support qui répond : le ticket passe « en cours » à son nom, sans rien écrire sur Discord. */
